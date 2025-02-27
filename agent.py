@@ -1,30 +1,12 @@
 import torch
 import numpy as np
 from helper import *
+from config import *
 from model import DQN, QTrainer
 from colorama import Fore, Style
 from game import SnakeGameAI, Direction, Point
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-MAX_EPOCHS = 2_000
-BLOCK_SIZE = 20
-
-MAX_MEMORY = 150_000
-LR = 0.0003
-GAMMA = 0.97
-BATCH_SIZE = 512
-TAU = 0.001
-
-TEMPERATURE = 0.3128
-MIN_TEMPERATURE = 0.05
-PREV_LOSS = 0.0
-DECAY_RATE = 0.990
-
-EXPLORATION_PHASE = False
-EXPLORATION_FREQUENCY = 100
-EXPLORATION_TEMP = 0.83
-EXPLORATION_DURATION = 10
 
 
 class PrioritizedReplayMemory:

@@ -144,6 +144,8 @@ def create_analysis_plots(df, save_path="plots/analysis"):
     """Create detailed analysis plots from game results data."""
     os.makedirs(save_path, exist_ok=True)
     
+    weight_cols = ['w1_norm', 'w2_norm', 'w3_norm']
+    
     # 1. Score progression with rolling averages
     if all(col in df.columns for col in weight_cols):
         plt.figure(figsize=(12, 6))
@@ -209,7 +211,6 @@ def create_analysis_plots(df, save_path="plots/analysis"):
         plt.close()
     
     # 5. Model weight norms (if available)
-    weight_cols = ['w1_norm', 'w2_norm', 'w3_norm']
     if all(col in df.columns for col in weight_cols):
         plt.figure(figsize=(12, 6))
         for col, color in zip(weight_cols, ['red', 'green', 'blue']):

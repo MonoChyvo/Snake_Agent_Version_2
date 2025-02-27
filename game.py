@@ -4,6 +4,7 @@ import numpy as np
 from enum import Enum
 from collections import namedtuple
 from typing import Optional, Tuple, List
+from config import *
 
 pygame.init()
 
@@ -13,16 +14,6 @@ except FileNotFoundError:
     print("No se encontró 'arial.ttf'. Usando fuente predeterminada.")
     font = pygame.font.SysFont('arial', 25)
 
-# Constantes de colores RGB
-WHITE = (255, 255, 255)
-RED = (220, 20, 60)
-BLUE1 = (30, 144, 255)
-BLUE2 = (0, 100, 255)
-BLACK = (0, 0, 0)
-
-# Configuración del juego
-BLOCK_SIZE = 20
-SPEED = 90
 
 class Direction(Enum):
     RIGHT = 1
