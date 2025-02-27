@@ -26,33 +26,37 @@ class DQN(nn.Module):
         x = self.linear3(x)
         return x
 
-    def save(self, file_name, folder_path='./model_Model', n_games=0, optimizer=None, loss=None, last_record_game=None):
-        # Creates the directory if it does not exist
-        os.makedirs(folder_path, exist_ok=True)
-        checkpoint = {
-            'n_games': n_games,
-            'model_state_dict': self.state_dict(),
-        }
-        if optimizer is not None:
-            checkpoint['optimizer_state_dict'] = optimizer
-        if loss is not None:
-            checkpoint['loss'] = loss
-        if last_record_game is not None:
-            checkpoint['last_record_game'] = last_record_game
-        checkpoint_path = os.path.join(folder_path, file_name)
-        try:
-            torch.save(checkpoint, checkpoint_path)
-            print(Fore.GREEN + f"Modelo guardado en {checkpoint_path}" + Style.RESET_ALL)
-        except Exception as e:
-            print(Fore.RED + f"Error al guardar el modelo: {e}" + Style.RESET_ALL)
-
-
-
+    def save(self, file_name, folder_path='./model_Model', n_games=0, optimizer=None, loss=None, last_record_game=None, record=None):
+            # Creates the directory if it does not exist
+            os.makedirs(folder_path, exist_ok=True)
+            checkpoint = {
+                'n_games': n_games,
+                'model_state_dict': self.state_dict(),
+            }
+            if optimizer is not None:
+                checkpoint['optimizer_state_dict'] = optimizer
+            if loss is not None:
+                checkpoint['loss'] = loss
+            if last_record_game is not None:
+                checkpoint['last_record_game'] = last_record_game
+            if record is not None:
+                checkpoint['record'] = record
+            checkpoint_path = os.path.join(folder_path, file_name)
+            try:
+                torch.save(checkpoint, checkpoint_path)
+                print(Fore.CYAN + f"Modelo guardado en {checkpoint_path}" + Style.RESET_ALL)
+                print(Fore.RED + '-'*60 + Style.RESET_ALL)
+                print('')
+                print('')
+            except Exception as e:
+                print(Fore.RED + f"Error al guardar el modelo: {e}" + Style.RESET_ALL)
+    
     def load(self, file_name, folder_path='./model_Model'):
         folder_fullpath = folder_path
         if not os.path.exists(folder_fullpath):
             logging.error(f"Directory {folder_fullpath} does not exist.")
-            return 0, None, None, 0
+            return None, None, None, None, None
+            
         file_path = os.path.join(folder_fullpath, file_name)
         try:
             checkpoint = torch.load(file_path)
@@ -61,14 +65,15 @@ class DQN(nn.Module):
             loss = checkpoint.get('loss', None)
             optimizer_state_dict = checkpoint.get('optimizer_state_dict', None)
             last_record_game = checkpoint.get('last_record_game', 0)
-            logging.info(f"Unified checkpoint '{file_name}' loaded from {folder_fullpath}. n_games: {n_games}")
-            return n_games, loss, optimizer_state_dict, last_record_game
+            record = checkpoint.get('record', 0)
+            print(Fore.LIGHTYELLOW_EX + f"\nUnified checkpoint: '{file_name}' \nLoaded from: {folder_fullpath}. \nTotal games: {n_games}, \nRecord: {record}" + Style.RESET_ALL)
+            return n_games, loss, optimizer_state_dict, last_record_game, record
         except FileNotFoundError:
             logging.error(f"File {file_path} not found.")
-            return 0, None, None, 0
+            return None, None, None, None, None
         except Exception as e:
             logging.error(f"Error loading unified checkpoint '{file_name}': {e}")
-            return 0, None, None, 0
+            return None, None, None, None, None
 
 class QTrainer:
     def __init__(self, model, target_model, lr, gamma):

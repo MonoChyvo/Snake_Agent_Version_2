@@ -54,19 +54,35 @@ class Agent:
     def __init__(self):
         self.n_games = 0
         self.last_record_game = 0
+        self.record = 0
         self.memory = PrioritizedReplayMemory(MAX_MEMORY)
         self.model = DQN(11, 256, 3).to(device)
         self.target_model = DQN(11, 256, 3).to(device)
+        self.trainer = QTrainer(self.model, self.target_model, lr=LR, gamma=GAMMA)
 
-        n_games_loaded, _, _, last_recorded_game = self.model.load("model_MARK_VII.pth")  # TODO: explain what this function does (from version 1.1 onward)
-        
-        self.n_games = n_games_loaded
-        self.last_record_game = last_recorded_game
+        try:
+            n_games_loaded, _, optimizer_state_dict, last_recorded_game, record = self.model.load("model_MARK_VII.pth")
+            
+            if n_games_loaded is not None:
+                self.n_games = n_games_loaded
+            if last_recorded_game is not None:
+                self.last_record_game = last_recorded_game
+            if record is not None:
+                self.record = record
+            if optimizer_state_dict is not None:
+                try:
+                    self.trainer.optimizer.load_state_dict(optimizer_state_dict)
+                    print(Fore.LIGHTYELLOW_EX + f"Restored optimizer state from checkpoint" + Style.RESET_ALL)
+                    print(Fore.RED + '-'*60 + Style.RESET_ALL)
+                except Exception as e:
+                    print(f"Error restoring optimizer state: {e}")
+        except Exception as e:
+            print(f"No previous model loaded or error loading model: {e}")
+            # Keep default values initialized above
         
         self.target_model.load_state_dict(self.model.state_dict())
         self.target_model.eval()
 
-        self.trainer = QTrainer(self.model, self.target_model, lr=LR, gamma=GAMMA)
         self.temperature = 1.0
         self.game_results = []
         
@@ -113,20 +129,27 @@ class Agent:
     def remember(self, state, action, reward, next_state, done):
         experience = (state, action, reward, next_state, done)
         self.memory.push(experience)
+        
+    def normalize_rewards(self, rewards, epsilon=1e-8):
+        rewards = np.array(rewards)
+        if len(rewards) > 1:
+            rewards = (rewards - rewards.mean()) / (rewards.std() + epsilon)
+        return rewards.tolist()
 
     def train_long_memory(self):
         mini_sample, indices, weights = self.memory.sample(BATCH_SIZE)
         states, actions, rewards, next_states, dones = zip(*mini_sample)
         
-        print(Fore.GREEN + f"Actions:\n{actions}\n" + Style.RESET_ALL)
-        print(Fore.YELLOW + f"Rewards:\n{rewards}\n" + Style.RESET_ALL)
-
         actions = np.array([np.argmax(a) for a in actions])
         states = np.array(states)
         rewards = np.array(rewards)
         next_states = np.array(next_states)
         dones = np.array(dones)
         weights = np.array(weights)
+        
+        # Normaliza las recompensas
+        if len(rewards) > 10:  # Solo normaliza si hay suficientes ejemplos
+            rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
 
         loss = self.trainer.train_step(states, actions, rewards, next_states, dones, weights)
 
@@ -164,45 +187,60 @@ def train(max_games: int) -> None:
     agent = Agent()
     game = SnakeGameAI()
     
-    record = agent.last_record_game
+    record = agent.record if hasattr(agent, 'record') else 0
     total_score = 0
     plot_mean_scores = []
     plot_scores = []
-
+    
+    # Temperature decay settings
+    min_temperature = 0.05
+    decay_rate = 0.999
+    
     while True:
         state_old = agent.get_state(game)
         final_move = agent.get_action(state_old)
-        reward, done, score = game.play_step(final_move, agent.n_games, record)
+        reward, done, score, ate_food = game.play_step(final_move, agent.n_games, record)
         state_new = agent.get_state(game)
         
         agent.train_short_memory(state_old, final_move, reward, state_new, done)
         agent.remember(state_old, final_move, reward, state_new, done)
+        
+        # Perform soft update of target network every step
+        agent.update_target_network()
 
         if done:
+            # Calculate reward statistics for the current game
+            episode_reward = sum(game.reward_history)
+            avg_reward = episode_reward / len(game.reward_history) if game.reward_history else 0
+
             game.reset()
             agent.n_games += 1
 
             # Long term training and capturing loss
             loss = agent.train_long_memory()
-            save_checkpoint(agent, loss)
-
-            # Calculate reward statistics for the current game
-            episode_reward = sum(game.reward_history)
-            avg_reward = episode_reward / len(game.reward_history) if game.reward_history else 0
 
             if score > record:
                 record = score
+                agent.record = score
                 agent.last_record_game = agent.n_games 
-                print(Fore.GREEN + f"New record at game {agent.last_record_game}!" + Style.RESET_ALL)
+                print(Fore.CYAN + f"New record at game: {agent.last_record_game}!" + Style.RESET_ALL)
+            
+            # Decay temperature after each game
+            agent.update_temperature(decay_rate, min_temperature)
+                
+            save_checkpoint(agent, loss)
 
             total_score = update_plots(agent, score, total_score, plot_scores, plot_mean_scores)
             
             # Auxiliary functions to print information
-            print(Fore.YELLOW + f"Game #{agent.n_games} ended with loss: {loss}" + Style.RESET_ALL)
-            print(Fore.MAGENTA + f"Game {agent.n_games} - Total Reward: {episode_reward}, Avg Reward: {avg_reward:.2f}" + Style.RESET_ALL)
+            print(Fore.RED + '-'*60 + Style.RESET_ALL)
+            print(Fore.LIGHTYELLOW_EX + f"                    || Game {agent.n_games} ||" + Style.RESET_ALL)
+            print(Fore.LIGHTMAGENTA_EX + f"Ended with loss: {loss:.4f}" + Style.RESET_ALL)
+            print(Fore.LIGHTMAGENTA_EX + f"Total Reward: {episode_reward:.4f} \nAvg Reward: {avg_reward:.2f}" + Style.RESET_ALL)
+            print(Fore.MAGENTA + f"Current temperature: {agent.temperature:.4f}" + Style.RESET_ALL)
             print_weight_norms(agent)
-            log_game_results(agent, score, record)
-            print_game_info(reward, score, agent.last_record_game)
+            log_game_results(agent, score, record, game, avg_loss=loss, rewards=game.reward_history)
+            print_game_info(episode_reward, score, agent.last_record_game, record)
             
             # Terminate training if max_games reached
             if agent.n_games >= max_games:

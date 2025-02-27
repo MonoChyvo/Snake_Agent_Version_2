@@ -41,13 +41,16 @@ class SnakeGameAI:
         self.display = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption('Training Snake')
         self.clock = pygame.time.Clock()
-        self.reset()
         
+        self.steps = 0
         self.reward_history = []
+        self.action_history = []
+        self.food_locations = []
+        
+        self.reset()
 
     def reset(self):
         """Reinicia el estado del juego."""
-        self.steps: int = 0
         self.direction: Direction = random.choice(list(Direction))
         self.head: Point = Point(self.width // 2, self.height // 2)
         self.snake: List[Point] = [
@@ -61,6 +64,8 @@ class SnakeGameAI:
         self.frame_iteration: int = 0
         
         self.reward_history = []
+        self.action_history = []
+        self.steps = 0
 
     def _place_food(self):
         """Coloca comida en una posición aleatoria."""
@@ -70,10 +75,17 @@ class SnakeGameAI:
             self.food = Point(x, y)
             if self.food not in self.snake:
                 break
+            
+        # Track food locations for analysis
+        if hasattr(self, "food") and self.food is not None:
+            self.food_locations.append((self.food.x, self.food.y))
 
     def play_step(self, action: List[int], n_game: int, record: int) -> Tuple[int, bool, int]:
         """Ejecuta un paso del juego y retorna (reward, game_over, score)."""
         prev_distance: int = abs(self.head.x - self.food.x) + abs(self.head.y - self.food.y)
+        
+        action_idx = np.argmax(action) if isinstance(action, list) else action
+        self.action_history.append(action_idx)
     
         self.steps += 1
         self.n_game = n_game
@@ -90,30 +102,92 @@ class SnakeGameAI:
 
         reward: int = 0
         game_over: bool = False
+        ate_food: bool = False
         
-        if self.is_collision() or self.frame_iteration > 90 * len(self.snake):
+        # Calculate current distance to food after move
+        current_distance: int = abs(self.head.x - self.food.x) + abs(self.head.y - self.food.y)
+    
+        
+        # Check for game over conditions
+        if self.is_collision() or self.frame_iteration > 100 * len(self.snake):
             game_over = True
-            reward = -10
+            # Higher penalty for early deaths, less penalty for deaths after longer games
+            base_penalty = -10
+            survival_factor = min(len(self.snake) / 10, 1.0)  # Cap at 1.0
+            reward = base_penalty * (1 - 0.5 * survival_factor)  # Less penalty if snake is longer
             self.reward_history.append(reward)
-            return reward, game_over, self.score
+            return reward, game_over, self.score, ate_food
 
+        # Check for food eaten
         if self.head == self.food:
             self.score += 1
-            reward = 10
+            ate_food = True
+            # Reward scales with snake length - more reward for growing longer
+            base_reward = 1.0
+            length_bonus = min(len(self.snake) * 0.5, 10)  # Cap at +10 bonus
+            reward = base_reward + length_bonus
             self.reward_history.append(reward)
             self._place_food()
         else:
-            new_distance: int = abs(self.head.x - self.food.x) + abs(self.head.y - self.food.y)
-            if new_distance < prev_distance:
-                reward = 1
+            # Mejora la recompensa basada en distancia en el método play_step
+            # Distance-based reward component con enfoque progresivo
+            distance_change = prev_distance - current_distance
+            # Usar una función no lineal para premiar más los acercamientos significativos
+            if distance_change > 0:  # Se está acercando a la comida
+                # Recompensa mayor por acercamientos grandes
+                distance_reward = 0.01 * (1 + distance_change / 10)
+            elif distance_change < 0:  # Se está alejando de la comida
+                # Penalizar menos por pequeños alejamientos
+                distance_reward = 0.01 * distance_change / 2
             else:
-                reward = -1
-                self.reward_history.append(reward)
+                distance_reward = 0
+
+            # Survival reward - small bonus for staying alive
+            survival_reward = 0.001
+
+            # Efficiency penalty - check if moving in circles
+            efficiency_penalty = 0
+            # If snake length is > 5 and it's revisiting areas frequently, penalize
+            if len(self.snake) > 5:
+                # Check how many unique positions in the snake
+                unique_positions = len(set((p.x, p.y) for p in self.snake))
+                efficiency_ratio = unique_positions / len(self.snake)
+                if efficiency_ratio < 0.7:  # If less than 70% of positions are unique
+                    efficiency_penalty = -0.02
+
+            # Danger awareness reward - more space is better
+            danger_reward = 0
+            # Check if next move in current direction would be safe
+            next_x, next_y = self._get_next_position(self.head, self.direction)
+            next_pos = Point(next_x, next_y)
+            if not self.is_collision(next_pos):
+                danger_reward += 0.01
+
+            # Combined reward
+            reward = distance_reward + survival_reward + efficiency_penalty + danger_reward
+
+            # Store reward and remove tail
+            self.reward_history.append(reward)
             self.snake.pop()
             
         self._update_ui()
         self.clock.tick(SPEED)
-        return reward, game_over, self.score
+        return reward, game_over, self.score, ate_food
+    
+    def _get_next_position(self, point, direction):
+        """Helper to get next position in a given direction."""
+        x, y = point.x, point.y
+        
+        if direction == Direction.RIGHT:
+            x += BLOCK_SIZE
+        elif direction == Direction.LEFT:
+            x -= BLOCK_SIZE
+        elif direction == Direction.DOWN:
+            y += BLOCK_SIZE
+        elif direction == Direction.UP:
+            y -= BLOCK_SIZE
+            
+        return x, y
 
     def is_collision(self, point: Optional[Point] = None) -> bool:
         """Verifica si hay colisión."""
