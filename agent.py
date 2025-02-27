@@ -7,11 +7,24 @@ from game import SnakeGameAI, Direction, Point
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-MAX_MEMORY = 150_000  # Larger memory for better experience diversity
-LR = 0.0003  # Smaller learning rate for more stable training
-GAMMA = 0.99  # Higher discount factor to better value future rewards
-BATCH_SIZE = 512  # Larger batch size for better gradient estimates
-TAU = 0.001  # Slower target network updates for stability
+MAX_EPOCHS = 2_000
+BLOCK_SIZE = 20
+
+MAX_MEMORY = 150_000
+LR = 0.0003
+GAMMA = 0.97
+BATCH_SIZE = 512
+TAU = 0.001
+
+TEMPERATURE = 0.3128
+MIN_TEMPERATURE = 0.05
+PREV_LOSS = 0.0
+DECAY_RATE = 0.990
+
+EXPLORATION_PHASE = False
+EXPLORATION_FREQUENCY = 100
+EXPLORATION_TEMP = 0.83
+EXPLORATION_DURATION = 10
 
 
 class PrioritizedReplayMemory:
@@ -56,9 +69,15 @@ class Agent:
         self.last_record_game = 0
         self.record = 0
         self.memory = PrioritizedReplayMemory(MAX_MEMORY)
-        self.model = DQN(11, 256, 3).to(device)
-        self.target_model = DQN(11, 256, 3).to(device)
+        self.model = DQN(19, 256, 3).to(device)
+        self.target_model = DQN(19, 256, 3).to(device)
         self.trainer = QTrainer(self.model, self.target_model, lr=LR, gamma=GAMMA)
+        
+        self.temperature = TEMPERATURE
+        self.pre_exploration_temp = TEMPERATURE
+        self.exploration_phase = EXPLORATION_PHASE
+        self.exploration_games_left = 0
+        self.last_exploration_game = 0
 
         try:
             n_games_loaded, _, optimizer_state_dict, last_recorded_game, record = self.model.load("model_MARK_VII.pth")
@@ -83,7 +102,6 @@ class Agent:
         self.target_model.load_state_dict(self.model.state_dict())
         self.target_model.eval()
 
-        self.temperature = 1.0
         self.game_results = []
         
     def get_state(self, game):
@@ -124,7 +142,24 @@ class Agent:
             game.food.y < head.y,
             game.food.y > head.y,
         ]
-        return np.array(state, dtype=int)
+        
+        head = game.snake[0]
+        directions = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)]
+        
+        for dx, dy in directions:
+            body_detected = False
+            for dist in range(1, 5):  # Buscar hasta 4 bloques de distancia
+                check_x = head.x + dx * dist * BLOCK_SIZE
+                check_y = head.y + dy * dist * BLOCK_SIZE
+                check_pt = Point(check_x, check_y)
+                if check_pt in game.snake[1:]:
+                    state.append(1/dist)  # Más cercano = valor más alto
+                    body_detected = True
+                    break
+            if not body_detected:
+                state.append(0)
+        
+        return np.array(state, dtype=float)
 
     def remember(self, state, action, reward, next_state, done):
         experience = (state, action, reward, next_state, done)
@@ -180,12 +215,41 @@ class Agent:
         for target_param, param in zip(self.target_model.parameters(), self.model.parameters()):
             target_param.data.copy_(TAU * param.data + (1.0 - TAU) * target_param.data)
 
-    def update_temperature(self, decay_rate, min_temperature):
-        self.temperature = max(self.temperature * decay_rate, min_temperature)
+    def update_temperature(self, decay_rate, min_temperature, current_game, exploration_temp, exploration_frequency, exploration_duration):
+        # Verifica si es momento de iniciar una fase de exploración
+        if (current_game > 0 and 
+            current_game % exploration_frequency == 0 and 
+            current_game > self.last_exploration_game + exploration_frequency/2):
+            
+            print(Fore.YELLOW + f"¡Iniciando fase de exploración por {exploration_duration} juegos!" + Style.RESET_ALL)
+            self.exploration_phase = True
+            self.exploration_games_left = exploration_duration
+            self.last_exploration_game = current_game
+            print(Fore.YELLOW + f"Last exploration was at game: {self.last_exploration_game}" + Style.RESET_ALL)
+            self.pre_exploration_temp = self.temperature
+            self.temperature = exploration_temp
+            return
+            
+        # Si estamos en fase de exploración, reducir contador
+        if self.exploration_phase:
+            self.exploration_games_left -= 1
+            
+            # Si terminó la fase, volver al decaimiento normal
+            if self.exploration_games_left <= 0:
+                self.exploration_phase = False
+                self.temperature = self.pre_exploration_temp
+                print(Fore.YELLOW + f"Fase de exploración terminada. Volviendo a temperatura {self.temperature:.4f}" + Style.RESET_ALL)
+                return
+                
+        # Si no estamos en fase de exploración, aplicar decaimiento normal
+        if not self.exploration_phase:
+            self.temperature = max(self.temperature * decay_rate, min_temperature)
 
 def train(max_games: int) -> None:
     agent = Agent()
     game = SnakeGameAI()
+    
+    prev_loss = PREV_LOSS
     
     record = agent.record if hasattr(agent, 'record') else 0
     total_score = 0
@@ -193,8 +257,14 @@ def train(max_games: int) -> None:
     plot_scores = []
     
     # Temperature decay settings
-    min_temperature = 0.05
-    decay_rate = 0.999
+    min_temperature = MIN_TEMPERATURE
+    decay_rate = DECAY_RATE
+    
+    # Exploración periódica (nuevos parámetros)
+    exploration_frequency = EXPLORATION_FREQUENCY
+    exploration_temp = EXPLORATION_TEMP
+    exploration_duration = EXPLORATION_DURATION
+    
     
     while True:
         state_old = agent.get_state(game)
@@ -212,12 +282,24 @@ def train(max_games: int) -> None:
             # Calculate reward statistics for the current game
             episode_reward = sum(game.reward_history)
             avg_reward = episode_reward / len(game.reward_history) if game.reward_history else 0
+            
+            log_game_results(agent, score, record, game, avg_loss=prev_loss, rewards=game.reward_history)
+            
+            agent.update_temperature(
+                decay_rate, 
+                min_temperature, 
+                agent.n_games,
+                exploration_temp,
+                exploration_frequency,
+                exploration_duration
+            )
 
             game.reset()
             agent.n_games += 1
 
             # Long term training and capturing loss
             loss = agent.train_long_memory()
+            prev_loss = loss
 
             if score > record:
                 record = score
@@ -225,9 +307,6 @@ def train(max_games: int) -> None:
                 agent.last_record_game = agent.n_games 
                 print(Fore.CYAN + f"New record at game: {agent.last_record_game}!" + Style.RESET_ALL)
             
-            # Decay temperature after each game
-            agent.update_temperature(decay_rate, min_temperature)
-                
             save_checkpoint(agent, loss)
 
             total_score = update_plots(agent, score, total_score, plot_scores, plot_mean_scores)
@@ -238,8 +317,9 @@ def train(max_games: int) -> None:
             print(Fore.LIGHTMAGENTA_EX + f"Ended with loss: {loss:.4f}" + Style.RESET_ALL)
             print(Fore.LIGHTMAGENTA_EX + f"Total Reward: {episode_reward:.4f} \nAvg Reward: {avg_reward:.2f}" + Style.RESET_ALL)
             print(Fore.MAGENTA + f"Current temperature: {agent.temperature:.4f}" + Style.RESET_ALL)
+            if agent.exploration_phase:
+                print(Fore.YELLOW + f"En fase de exploración: {agent.exploration_games_left} juegos restantes" + Style.RESET_ALL)
             print_weight_norms(agent)
-            log_game_results(agent, score, record, game, avg_loss=loss, rewards=game.reward_history)
             print_game_info(episode_reward, score, agent.last_record_game, record)
             
             # Terminate training if max_games reached
@@ -249,4 +329,4 @@ def train(max_games: int) -> None:
 
 
 if __name__ == "__main__":
-    train(max_games=1000)
+    train(MAX_EPOCHS)

@@ -66,6 +66,8 @@ class SnakeGameAI:
         self.reward_history = []
         self.action_history = []
         self.steps = 0
+        
+        self.visit_map = np.zeros((self.width // BLOCK_SIZE, self.height // BLOCK_SIZE))
 
     def _place_food(self):
         """Coloca comida en una posición aleatoria."""
@@ -81,7 +83,6 @@ class SnakeGameAI:
             self.food_locations.append((self.food.x, self.food.y))
 
     def play_step(self, action: List[int], n_game: int, record: int) -> Tuple[int, bool, int]:
-        """Ejecuta un paso del juego y retorna (reward, game_over, score)."""
         prev_distance: int = abs(self.head.x - self.food.x) + abs(self.head.y - self.food.y)
         
         action_idx = np.argmax(action) if isinstance(action, list) else action
@@ -99,6 +100,17 @@ class SnakeGameAI:
 
         self._move(action)
         self.snake.insert(0, self.head)
+        
+        grid_x, grid_y = self.head.x // BLOCK_SIZE, self.head.y // BLOCK_SIZE
+        self.visit_map[grid_x, grid_y] += 1
+        
+        # Modificar el cálculo de efficiency_penalty
+        if len(self.snake) > 5:
+            visit_score = self.visit_map[grid_x, grid_y]
+            if visit_score > 2:  # Visitó esta celda más de dos veces
+                efficiency_penalty = -0.05 * (visit_score - 1)
+            else:
+                efficiency_penalty = 0
 
         reward: int = 0
         game_over: bool = False
@@ -145,16 +157,6 @@ class SnakeGameAI:
             # Survival reward - small bonus for staying alive
             survival_reward = 0.001
 
-            # Efficiency penalty - check if moving in circles
-            efficiency_penalty = 0
-            # If snake length is > 5 and it's revisiting areas frequently, penalize
-            if len(self.snake) > 5:
-                # Check how many unique positions in the snake
-                unique_positions = len(set((p.x, p.y) for p in self.snake))
-                efficiency_ratio = unique_positions / len(self.snake)
-                if efficiency_ratio < 0.7:  # If less than 70% of positions are unique
-                    efficiency_penalty = -0.02
-
             # Danger awareness reward - more space is better
             danger_reward = 0
             # Check if next move in current direction would be safe
@@ -162,9 +164,26 @@ class SnakeGameAI:
             next_pos = Point(next_x, next_y)
             if not self.is_collision(next_pos):
                 danger_reward += 0.01
+                
+            # Verificar trayectoria futura para detectar colisiones inminentes
+            future_penalty = 0
+            future_pos = self.head
+            future_dir = self.direction
 
-            # Combined reward
-            reward = distance_reward + survival_reward + efficiency_penalty + danger_reward
+            # Simular hasta 3 pasos adelante en la dirección actual
+            for look_ahead in range(1, 4):
+                next_x, next_y = self._get_next_position(future_pos, future_dir)
+                future_pos = Point(next_x, next_y)
+                
+                # Si vamos a chocar en los próximos 3 movimientos, penalizar proporcionalmente
+                if self.is_collision(future_pos):
+                    future_penalty = -0.1 * (4 - look_ahead)  # -0.3 para 1 paso, -0.2 para 2 pasos, -0.1 para 3 pasos
+                    break
+
+            # Combined reward - añadir future_penalty a la combinación
+            reward = distance_reward + survival_reward + efficiency_penalty + danger_reward + future_penalty
+            
+            
 
             # Store reward and remove tail
             self.reward_history.append(reward)
@@ -202,11 +221,28 @@ class SnakeGameAI:
     def _update_ui(self) -> None:
         """Actualiza la interfaz gráfica."""
         self.display.fill(BLACK)
+        
+        if hasattr(self, 'visit_map'):
+            max_visits = np.max(self.visit_map) if np.max(self.visit_map) > 0 else 1
+            for x in range(self.width // BLOCK_SIZE):
+                for y in range(self.height // BLOCK_SIZE):
+                    visits = self.visit_map[x, y]
+                    if visits > 0:
+                        # Color intensity based on visit count (darker = more visits)
+                        intensity = min(255, int(100 + (visits / max_visits) * 155))
+                        heat_color = (intensity, 0, 0)  # Rojo con intensidad variable
+                        pygame.draw.rect(
+                            self.display, 
+                            heat_color, 
+                            pygame.Rect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE),
+                            1  # Solo borde para no ocultar la serpiente
+                        )
+        
         for pt in self.snake:
             pygame.draw.rect(self.display, BLUE1, pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE))
             pygame.draw.rect(self.display, BLUE2, pygame.Rect(pt.x + 4, pt.y + 4, 12, 12))
         pygame.draw.rect(self.display, RED, pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE))
-
+    
         score_text = font.render(f"Score: {self.score}", True, WHITE)
         n_game_text = font.render(f"Game: {self.n_game}", True, WHITE)
         record_text = font.render(f"Record: {self.record}", True, WHITE)

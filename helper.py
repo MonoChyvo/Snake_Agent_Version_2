@@ -145,16 +145,22 @@ def create_analysis_plots(df, save_path="plots/analysis"):
     os.makedirs(save_path, exist_ok=True)
     
     # 1. Score progression with rolling averages
-    plt.figure(figsize=(12, 6))
-    plt.plot(df['game_number'], df['score'], color='blue', alpha=0.3, label='Score')
-    plt.plot(df['game_number'], df['score'].rolling(20).mean(), color='red', label='20-game Avg')
-    plt.plot(df['game_number'], df['score'].rolling(100).mean(), color='green', label='100-game Avg')
-    plt.title('Score Progression')
-    plt.xlabel('Game Number')
-    plt.ylabel('Score')
-    plt.legend()
-    plt.savefig(f"{save_path}/score_progression.png")
-    plt.close()
+    if all(col in df.columns for col in weight_cols):
+        plt.figure(figsize=(12, 6))
+        # Calcular ratios de normas
+        df['w2_w1_ratio'] = df['w2_norm'] / df['w1_norm']
+        df['w3_w1_ratio'] = df['w3_norm'] / df['w1_norm']
+        
+        plt.plot(df['game_number'], df['w2_w1_ratio'], color='purple', label='w2/w1 ratio')
+        plt.plot(df['game_number'], df['w3_w1_ratio'], color='orange', label='w3/w1 ratio')
+        plt.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
+        
+        plt.title('Weight Norm Ratios (Ideal: closer to 1.0)')
+        plt.xlabel('Game Number')
+        plt.ylabel('Ratio')
+        plt.legend()
+        plt.savefig(f"{save_path}/weight_norm_ratios.png")
+        plt.close()
     
     # 2. Reward analysis
     if 'avg_reward' in df.columns:
@@ -252,7 +258,7 @@ def save_checkpoint(agent, loss):
     record_value = agent.record if hasattr(agent, 'record') else 0
     print(Fore.GREEN + f"Saving checkpoint with record: {record_value}" + Style.RESET_ALL)
     agent.model.save(
-        "model_MARK_VII.pth",
+        "model_MARK_VIII.pth",
         n_games=agent.n_games,
         optimizer=agent.trainer.optimizer.state_dict(),
         loss=loss,

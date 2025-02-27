@@ -83,6 +83,9 @@ class QTrainer:
         self.target_model = target_model
         self.optimizer = optim.Adam(model.parameters(), lr=self.lr)
         self.criterion = nn.MSELoss()
+        # Añadir coeficientes de regularización específicos por capa
+        self.l2_lambdas = {'linear1': 0.0001, 'linear2': 0.001, 'linear3': 0.0001}
+
 
     def _prepare_tensor(self, data, dtype, unsqueeze=True):
         tensor = torch.tensor(data, dtype=dtype).to(device)
@@ -108,9 +111,17 @@ class QTrainer:
         next_action = self.model(next_state).argmax(1).unsqueeze(-1)
         next_pred = self.target_model(next_state).gather(1, next_action).squeeze(-1)
         target = reward + (1 - done) * self.gamma * next_pred
+        
+        # Añadir regularización L2 con diferentes intensidades por capa
+        l2_reg = 0
+        for name, param in self.model.named_parameters():
+            if 'weight' in name:
+                layer_name = name.split('.')[0]  # Obtiene 'linear1', 'linear2' o 'linear3'
+                if layer_name in self.l2_lambdas:
+                    l2_reg += self.l2_lambdas[layer_name] * param.pow(2).sum()
     
         # Calcula pérdida y actualiza pesos. Se utiliza target.detach() para evitar la retropropagación a la red target.
-        loss = (weights * (pred - target.detach()).pow(2)).mean()
+        loss = (weights * (pred - target.detach()).pow(2)).mean() + l2_reg
     
         # Obtén estadísticas previas (p.ej. pesos antes de actualizar)
         old_weights = {name: param.clone() for name, param in self.model.named_parameters()}
@@ -123,6 +134,16 @@ class QTrainer:
         logging.debug(f"Gradient norms: {grad_norms}")
     
         self.optimizer.step()
+        
+        # Calcular y loguear la contribución de L2 a la pérdida
+        l2_contributions = {}
+        for name, param in self.model.named_parameters():
+            if 'weight' in name:
+                layer_name = name.split('.')[0]
+                if layer_name in self.l2_lambdas:
+                    l2_contributions[layer_name] = self.l2_lambdas[layer_name] * param.pow(2).sum().item()
+                    
+        print(Fore.MAGENTA + f"L2 regularization contributions: {l2_contributions}" + Style.RESET_ALL)
     
         # Calcula y logea los cambios en los pesos
         weight_changes = {name: (param - old_weights[name]).norm().item() for name, param in self.model.named_parameters()}
