@@ -93,8 +93,12 @@ class SnakeGameAI:
         self.snake.insert(0, self.head)
         
         grid_x, grid_y = self.head.x // BLOCK_SIZE, self.head.y // BLOCK_SIZE
+        # Ensure grid_x and grid_y are within bounds
+        grid_x = min(max(grid_x, 0), self.visit_map.shape[0] - 1)
+        grid_y = min(max(grid_y, 0), self.visit_map.shape[1] - 1)
         self.visit_map[grid_x, grid_y] += 1
         
+        efficiency_penalty = 0  # Initialize efficiency_penalty to 0
         # Modificar el cálculo de efficiency_penalty
         if len(self.snake) > 5:
             visit_score = self.visit_map[grid_x, grid_y]

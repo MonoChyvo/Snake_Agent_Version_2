@@ -62,7 +62,7 @@ class Agent:
         self.last_exploration_game = 0
 
         try:
-            n_games_loaded, _, optimizer_state_dict, last_recorded_game, record = self.model.load("model_MARK_VII.pth")
+            n_games_loaded, _, optimizer_state_dict, last_recorded_game, record = self.model.load("model_MARK_VIII.pth")
             
             if n_games_loaded is not None:
                 self.n_games = n_games_loaded

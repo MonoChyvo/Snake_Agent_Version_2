@@ -143,7 +143,6 @@ class QTrainer:
                 if layer_name in self.l2_lambdas:
                     l2_contributions[layer_name] = self.l2_lambdas[layer_name] * param.pow(2).sum().item()
                     
-        print(Fore.MAGENTA + f"L2 regularization contributions: {l2_contributions}" + Style.RESET_ALL)
     
         # Calcula y logea los cambios en los pesos
         weight_changes = {name: (param - old_weights[name]).norm().item() for name, param in self.model.named_parameters()}
