@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from colorama import Fore, Style
+from datetime import datetime
 
 # Configure logging if it has not been set up
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -27,29 +28,25 @@ class DQN(nn.Module):
         return x
 
     def save(self, file_name, folder_path='./model_Model', n_games=0, optimizer=None, loss=None, last_record_game=None, record=None):
-            # Creates the directory if it does not exist
-            os.makedirs(folder_path, exist_ok=True)
-            checkpoint = {
-                'n_games': n_games,
-                'model_state_dict': self.state_dict(),
-            }
-            if optimizer is not None:
-                checkpoint['optimizer_state_dict'] = optimizer
-            if loss is not None:
-                checkpoint['loss'] = loss
-            if last_record_game is not None:
-                checkpoint['last_record_game'] = last_record_game
-            if record is not None:
-                checkpoint['record'] = record
-            checkpoint_path = os.path.join(folder_path, file_name)
-            try:
-                torch.save(checkpoint, checkpoint_path)
-                print(Fore.CYAN + f"Modelo guardado en {checkpoint_path}" + Style.RESET_ALL)
-                print(Fore.RED + '-'*60 + Style.RESET_ALL)
-                print('')
-                print('')
-            except Exception as e:
-                print(Fore.RED + f"Error al guardar el modelo: {e}" + Style.RESET_ALL)
+        os.makedirs(folder_path, exist_ok=True)
+        checkpoint = {
+            'model_state_dict': self.state_dict(),
+            'n_games': n_games,
+            'optimizer_state_dict': optimizer,
+            'loss': loss,
+            'last_record_game': last_record_game,
+            'record': record
+        }
+        checkpoint_path = os.path.join(folder_path, file_name)
+        try:
+            torch.save(checkpoint, checkpoint_path)
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(Fore.CYAN + f"Modelo guardado en {checkpoint_path} el {current_time}" + Style.RESET_ALL)
+            print(Fore.RED + '-'*60 + Style.RESET_ALL)
+            print('')
+            print('')
+        except Exception as e:
+            print(Fore.RED + f"Error al guardar el modelo: {e}" + Style.RESET_ALL)
     
     def load(self, file_name, folder_path='./model_Model'):
         folder_fullpath = folder_path
@@ -128,7 +125,7 @@ class QTrainer:
     
         self.optimizer.zero_grad()
         loss.backward()
-    
+        
         # Logear la magnitud de los gradientes
         grad_norms = {name: param.grad.norm().item() for name, param in self.model.named_parameters() if param.grad is not None}
         logging.debug(f"Gradient norms: {grad_norms}")

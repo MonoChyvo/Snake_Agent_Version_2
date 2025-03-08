@@ -1,7 +1,7 @@
 import torch
 import numpy as np
-from helper import *
-from config import *
+from helper import log_game_results, save_checkpoint, update_plots, print_weight_norms, print_game_info
+from config import MAX_MEMORY, LR, GAMMA, TEMPERATURE, EXPLORATION_PHASE, MIN_TEMPERATURE, DECAY_RATE, EXPLORATION_FREQUENCY, EXPLORATION_TEMP, EXPLORATION_DURATION, MAX_EPOCHS, BLOCK_SIZE, BATCH_SIZE, TAU
 from model import DQN, QTrainer
 from colorama import Fore, Style
 from game import SnakeGameAI, Direction, Point
@@ -32,8 +32,9 @@ class PrioritizedReplayMemory:
         if len(self.priorities) != len(self.memory):
             self.priorities = np.ones(len(self.memory), dtype=np.float32).tolist()
 
-        probabilities = np.array(self.priorities, dtype=np.float32)
-        probabilities = probabilities / probabilities.sum()
+        epsilon = 1e-6  # Valor pequeño para asegurar diversidad
+        priorities = np.array(self.priorities, dtype=np.float32) + epsilon
+        probabilities = priorities / priorities.sum()
         indices = np.random.choice(len(self.memory), batch_size, p=probabilities)
         mini_sample = [self.memory[i] for i in indices]
         weights = probabilities[indices]
@@ -60,9 +61,14 @@ class Agent:
         self.exploration_phase = EXPLORATION_PHASE
         self.exploration_games_left = 0
         self.last_exploration_game = 0
+        
+        # Inicializar diccionario para seguimiento de las mejores métricas
+        self.best_metrics = {}
+        # Lista para mantener los scores recientes para cálculos de mejora
+        self.recent_scores = []
 
         try:
-            n_games_loaded, _, optimizer_state_dict, last_recorded_game, record = self.model.load("model_MARK_VIII.pth")
+            n_games_loaded, _, optimizer_state_dict, last_recorded_game, record = self.model.load("model_MARK_IX.pth")
             
             if n_games_loaded is not None:
                 self.n_games = n_games_loaded
@@ -73,7 +79,7 @@ class Agent:
             if optimizer_state_dict is not None:
                 try:
                     self.trainer.optimizer.load_state_dict(optimizer_state_dict)
-                    print(Fore.LIGHTYELLOW_EX + f"Restored optimizer state from checkpoint" + Style.RESET_ALL)
+                    print(Fore.LIGHTYELLOW_EX + "Restored optimizer state from checkpoint" + Style.RESET_ALL)
                     print(Fore.RED + '-'*60 + Style.RESET_ALL)
                 except Exception as e:
                     print(f"Error restoring optimizer state: {e}")
@@ -125,7 +131,6 @@ class Agent:
             game.food.y > head.y,
         ]
         
-        head = game.snake[0]
         directions = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)]
         
         for dx, dy in directions:
@@ -146,12 +151,6 @@ class Agent:
     def remember(self, state, action, reward, next_state, done):
         experience = (state, action, reward, next_state, done)
         self.memory.push(experience)
-        
-    def normalize_rewards(self, rewards, epsilon=1e-8):
-        rewards = np.array(rewards)
-        if len(rewards) > 1:
-            rewards = (rewards - rewards.mean()) / (rewards.std() + epsilon)
-        return rewards.tolist()
 
     def train_long_memory(self):
         mini_sample, indices, weights = self.memory.sample(BATCH_SIZE)
@@ -198,40 +197,35 @@ class Agent:
             target_param.data.copy_(TAU * param.data + (1.0 - TAU) * target_param.data)
 
     def update_temperature(self, decay_rate, min_temperature, current_game, exploration_temp, exploration_frequency, exploration_duration):
-        # Verifica si es momento de iniciar una fase de exploración
+
+        # Inicia fase de exploración si corresponde
         if (current_game > 0 and 
             current_game % exploration_frequency == 0 and 
             current_game > self.last_exploration_game + exploration_frequency/2):
-            
             print(Fore.YELLOW + f"¡Iniciando fase de exploración por {exploration_duration} juegos!" + Style.RESET_ALL)
             self.exploration_phase = True
             self.exploration_games_left = exploration_duration
             self.last_exploration_game = current_game
-            print(Fore.YELLOW + f"Last exploration was at game: {self.last_exploration_game}" + Style.RESET_ALL)
             self.pre_exploration_temp = self.temperature
             self.temperature = exploration_temp
             return
-            
-        # Si estamos en fase de exploración, reducir contador
+
+        # Si estamos en fase de exploración, reducir el contador
         if self.exploration_phase:
             self.exploration_games_left -= 1
-            
-            # Si terminó la fase, volver al decaimiento normal
             if self.exploration_games_left <= 0:
                 self.exploration_phase = False
                 self.temperature = self.pre_exploration_temp
                 print(Fore.YELLOW + f"Fase de exploración terminada. Volviendo a temperatura {self.temperature:.4f}" + Style.RESET_ALL)
                 return
-                
-        # Si no estamos en fase de exploración, aplicar decaimiento normal
+        
+        # Ajuste de temperatura fuera de fase de exploración
         if not self.exploration_phase:
             self.temperature = max(self.temperature * decay_rate, min_temperature)
 
 def train(max_games: int) -> None:
     agent = Agent()
     game = SnakeGameAI()
-    
-    prev_loss = PREV_LOSS
     
     record = agent.record if hasattr(agent, 'record') else 0
     total_score = 0
@@ -246,7 +240,6 @@ def train(max_games: int) -> None:
     exploration_frequency = EXPLORATION_FREQUENCY
     exploration_temp = EXPLORATION_TEMP
     exploration_duration = EXPLORATION_DURATION
-    
     
     while True:
         state_old = agent.get_state(game)
@@ -265,8 +258,20 @@ def train(max_games: int) -> None:
             episode_reward = sum(game.reward_history)
             avg_reward = episode_reward / len(game.reward_history) if game.reward_history else 0
             
-            log_game_results(agent, score, record, game, avg_loss=prev_loss, rewards=game.reward_history)
+            # Añadir score actual a la lista de scores recientes para cálculos de mejora
+            if not hasattr(agent, 'recent_scores'):
+                agent.recent_scores = []
+            agent.recent_scores.append(score)
+            if len(agent.recent_scores) > 50:  # Mantener solo los últimos 50 scores
+                agent.recent_scores.pop(0)
+                
+            # Long term training and capturing loss
+            loss = agent.train_long_memory()
             
+            # Guardar datos del juego actual para análisis 
+            log_game_results(agent, score, record, game, avg_loss=loss)
+            
+            # Actualizar temperatura de exploración
             agent.update_temperature(
                 decay_rate, 
                 min_temperature, 
@@ -276,21 +281,22 @@ def train(max_games: int) -> None:
                 exploration_duration
             )
 
-            game.reset()
+            # Actualizar contador de juegos y resetear el juego
             agent.n_games += 1
+            game.reset()
 
-            # Long term training and capturing loss
-            loss = agent.train_long_memory()
-            prev_loss = loss
-
+            # Guardar checkpoint regular si es mejor record
             if score > record:
                 record = score
                 agent.record = score
                 agent.last_record_game = agent.n_games 
+                
+                # Guardar un checkpoint basado en record
                 print(Fore.CYAN + f"New record at game: {agent.last_record_game}!" + Style.RESET_ALL)
             
             save_checkpoint(agent, loss)
-
+            
+            # Actualizar gráficas
             total_score = update_plots(agent, score, total_score, plot_scores, plot_mean_scores)
             
             # Auxiliary functions to print information
@@ -302,7 +308,7 @@ def train(max_games: int) -> None:
             if agent.exploration_phase:
                 print(Fore.YELLOW + f"En fase de exploración: {agent.exploration_games_left} juegos restantes" + Style.RESET_ALL)
             print_weight_norms(agent)
-            print_game_info(episode_reward, score, agent.last_record_game, record)
+            print_game_info(episode_reward, score, agent.last_record_game, record, agent.recent_scores)
             
             # Terminate training if max_games reached
             if agent.n_games >= max_games:

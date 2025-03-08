@@ -4,7 +4,7 @@ import numpy as np
 from enum import Enum
 from collections import namedtuple
 from typing import Optional, Tuple, List
-from config import *
+from config import BLOCK_SIZE, SPEED, BLUE1, BLUE2, RED, WHITE, BLACK
 
 pygame.init()
 
@@ -116,7 +116,7 @@ class SnakeGameAI:
     
         
         # Check for game over conditions
-        if self.is_collision() or self.frame_iteration > 100 * len(self.snake):
+        if self.is_collision() or self.frame_iteration > 120 * len(self.snake):
             game_over = True
             # Higher penalty for early deaths, less penalty for deaths after longer games
             base_penalty = -10
@@ -178,7 +178,6 @@ class SnakeGameAI:
             # Combined reward - añadir future_penalty a la combinación
             reward = distance_reward + survival_reward + efficiency_penalty + danger_reward + future_penalty
             
-            
 
             # Store reward and remove tail
             self.reward_history.append(reward)
@@ -239,7 +238,7 @@ class SnakeGameAI:
         pygame.draw.rect(self.display, RED, pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE))
     
         score_text = font.render(f"Score: {self.score}", True, WHITE)
-        n_game_text = font.render(f"Game: {self.n_game}", True, WHITE)
+        n_game_text = font.render(f"Game: {self.n_game + 1}", True, WHITE)
         record_text = font.render(f"Record: {self.record}", True, WHITE)
         self.display.blit(score_text, [0, 0])
         self.display.blit(n_game_text, [0, 30])
