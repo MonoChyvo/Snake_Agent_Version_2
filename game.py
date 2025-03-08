@@ -28,10 +28,10 @@ from config import BLOCK_SIZE, SPEED, BLUE1, BLUE2, RED, WHITE, BLACK
 pygame.init()
 
 try:
-    font = pygame.font.Font('arial.ttf', 25)
+    font = pygame.font.Font("arial.ttf", 25)
 except FileNotFoundError:
     print("No se encontró 'arial.ttf'. Usando fuente predeterminada.")
-    font = pygame.font.SysFont('arial', 25)
+    font = pygame.font.SysFont("arial", 25)
 
 
 class Direction(Enum):
@@ -40,7 +40,9 @@ class Direction(Enum):
     UP = 3
     DOWN = 4
 
-Point = namedtuple('Point', 'x, y')
+
+Point = namedtuple("Point", "x, y")
+
 
 class SnakeGameAI:
     def __init__(self, width: int = 640, height: int = 480, n_game: int = 0, record: int = 0) -> None:
@@ -49,14 +51,14 @@ class SnakeGameAI:
         self.n_game: int = n_game
         self.record: int = record
         self.display = pygame.display.set_mode((self.width, self.height))
-        pygame.display.set_caption('Training Snake')
+        pygame.display.set_caption("Training Snake")
         self.clock = pygame.time.Clock()
-        
+
         self.steps = 0
         self.reward_history = []
         self.action_history = []
         self.food_locations = []
-        
+
         self.reset()
 
     def reset(self):
@@ -66,19 +68,18 @@ class SnakeGameAI:
         self.snake: List[Point] = [
             self.head,
             Point(self.head.x - BLOCK_SIZE, self.head.y),
-            Point(self.head.x - (2 * BLOCK_SIZE), self.head.y)
+            Point(self.head.x - (2 * BLOCK_SIZE), self.head.y),
         ]
         self.score: int = 0
         self.food: Optional[Point] = None
         self._place_food()
         self.frame_iteration: int = 0
-        
+
         self.reward_history = []
         self.action_history = []
         self.steps = 0
-        
+
         self.visit_map = np.zeros((self.width // BLOCK_SIZE, self.height // BLOCK_SIZE))
-        self.decay_rate = 0.95
 
     def _place_food(self):
         """Coloca comida en una posición aleatoria."""
@@ -88,17 +89,17 @@ class SnakeGameAI:
             self.food = Point(x, y)
             if self.food not in self.snake:
                 break
-            
+
         # Track food locations for analysis
         if hasattr(self, "food") and self.food is not None:
             self.food_locations.append((self.food.x, self.food.y))
 
     def play_step(self, action: List[int], n_game: int, record: int) -> Tuple[int, bool, int]:
         prev_distance: int = abs(self.head.x - self.food.x) + abs(self.head.y - self.food.y) if self.food else 999999
-        
+
         action_idx = np.argmax(action) if isinstance(action, list) else action
         self.action_history.append(action_idx)
-    
+
         self.steps += 1
         self.n_game = n_game
         self.record = record
@@ -111,13 +112,13 @@ class SnakeGameAI:
 
         self._move(action)
         self.snake.insert(0, self.head)
-        
+
         grid_x, grid_y = self.head.x // BLOCK_SIZE, self.head.y // BLOCK_SIZE
         # Ensure grid_x and grid_y are within bounds
         grid_x = min(max(grid_x, 0), self.visit_map.shape[0] - 1)
         grid_y = min(max(grid_y, 0), self.visit_map.shape[1] - 1)
         self.visit_map[grid_x, grid_y] += 1
-        
+
         efficiency_penalty = 0  # Initialize efficiency_penalty to 0
         # Modificar el cálculo de efficiency_penalty
         if len(self.snake) > 5:
@@ -130,11 +131,12 @@ class SnakeGameAI:
         reward: int = 0
         game_over: bool = False
         ate_food: bool = False
-        
+
         # Calculate current distance to food after move
-        current_distance: int = int(abs(self.head.x - self.food.x) + abs(self.food.y - self.head.y)) if self.food else 999999
-    
-        
+        current_distance: int = (
+            int(abs(self.head.x - self.food.x) + abs(self.food.y - self.head.y)) if self.food else 999999
+        )
+
         # Check for game over conditions
         if self.is_collision() or self.frame_iteration > 120 * len(self.snake):
             game_over = True
@@ -179,7 +181,7 @@ class SnakeGameAI:
             next_pos = Point(next_x, next_y)
             if not self.is_collision(next_pos):
                 danger_reward += 0.01
-                
+
             # Verificar trayectoria futura para detectar colisiones inminentes
             future_penalty = 0
             future_pos = self.head
@@ -189,7 +191,7 @@ class SnakeGameAI:
             for look_ahead in range(1, 4):
                 next_x, next_y = self._get_next_position(future_pos, future_dir)
                 future_pos = Point(next_x, next_y)
-                
+
                 # Si vamos a chocar en los próximos 3 movimientos, penalizar proporcionalmente
                 if self.is_collision(future_pos):
                     future_penalty = -0.1 * (4 - look_ahead)  # -0.3 para 1 paso, -0.2 para 2 pasos, -0.1 para 3 pasos
@@ -197,22 +199,19 @@ class SnakeGameAI:
 
             # Combined reward - añadir future_penalty a la combinación
             reward = int(distance_reward + survival_reward + efficiency_penalty + danger_reward + future_penalty)
-            
 
             # Store reward and remove tail
             self.reward_history.append(reward)
             self.snake.pop()
-        
-        self.visit_map *= self.decay_rate
-            
+
         self._update_ui()
         self.clock.tick(SPEED)
         return reward, game_over, self.score
-    
+
     def _get_next_position(self, point, direction):
         """Helper to get next position in a given direction."""
         x, y = point.x, point.y
-        
+
         if direction == Direction.RIGHT:
             x += BLOCK_SIZE
         elif direction == Direction.LEFT:
@@ -221,14 +220,14 @@ class SnakeGameAI:
             y += BLOCK_SIZE
         elif direction == Direction.UP:
             y -= BLOCK_SIZE
-            
+
         return x, y
 
     def is_collision(self, point: Optional[Point] = None) -> bool:
         """Verifica si hay colisión."""
         if point is None:
             point = self.head
-        if (point.x >= self.width or point.x < 0 or point.y >= self.height or point.y < 0):
+        if point.x >= self.width or point.x < 0 or point.y >= self.height or point.y < 0:
             return True
         if point in self.snake[1:]:
             return True
@@ -237,30 +236,36 @@ class SnakeGameAI:
     def _update_ui(self) -> None:
         """Actualiza la interfaz gráfica."""
         self.display.fill(BLACK)
-        
-        if hasattr(self, 'visit_map'):
+
+        if hasattr(self, "visit_map"):
             max_visits = np.max(self.visit_map) if np.max(self.visit_map) > 0 else 1
             for x in range(self.width // BLOCK_SIZE):
                 for y in range(self.height // BLOCK_SIZE):
                     visits = self.visit_map[x, y]
-                    if visits > 0.1:
-                        # Color intensity based on visit count (darker = more visits)
-                        intensity = min(255, int(100 + (visits / max_visits) * 155))
-                        heat_color = (intensity, 0, 0)  # Rojo con intensidad variable
+                    if visits > 0:
+                        # Comenzar con un color tenue y aumentar la intensidad con cada visita
+                        base_intensity = 30  # Valor base bajo para el primer paso
+                        added_intensity = min(225, visits * 20)  # Incremento gradual, máximo 255
+                        intensity = int(base_intensity + added_intensity)
+
+                        # Añadir componente verde para hacer el color más brillante con más visitas
+                        green_component = min(255, int(visits * 15))
+                        heat_color = (intensity, green_component, 0)
+
                         pygame.draw.rect(
-                            self.display, 
-                            heat_color, 
+                            self.display,
+                            heat_color,
                             pygame.Rect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE),
-                            1  # Solo borde para no ocultar la serpiente
+                            1,
                         )
-        
+
         for pt in self.snake:
             pygame.draw.rect(self.display, BLUE1, pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE))
             pygame.draw.rect(self.display, BLUE2, pygame.Rect(pt.x + 4, pt.y + 4, 12, 12))
-            
+
         if self.food is not None:  # Check if food exists before drawing
             pygame.draw.rect(self.display, RED, pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE))
-    
+
         score_text = font.render(f"Score: {self.score}", True, WHITE)
         n_game_text = font.render(f"Game: {self.n_game + 1}", True, WHITE)
         record_text = font.render(f"Record: {self.record}", True, WHITE)

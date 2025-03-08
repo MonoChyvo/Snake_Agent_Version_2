@@ -37,9 +37,9 @@ EXPLORATION_DURATION = 15
 
 # Sistema de alertas: umbrales para métricas clave
 ALERT_THRESHOLDS = {
-    'loss': {'high': 1.5, 'critical': 2.5},  # Increased tolerance for complex scenarios
-    'avg_reward': {'low': -0.8, 'critical': -1.5},  # Adjusted for longer episodes
-    'efficiency_ratio': {'low': 0.5},  # Relaxed for longer snake
-    'steps_per_food': {'high': 150},  # Increased for longer snake scenarios
-    'weight_norm_ratio': {'high': 3.5, 'critical': 5.5},  # Adjusted for more complex patterns
+    "loss": {"high": 1.5, "critical": 2.5},  # Increased tolerance for complex scenarios
+    "avg_reward": {"low": -0.8, "critical": -1.5},  # Adjusted for longer episodes
+    "efficiency_ratio": {"low": 0.5},  # Relaxed for longer snake
+    "steps_per_food": {"high": 150},  # Increased for longer snake scenarios
+    "weight_norm_ratio": {"high": 3.5, "critical": 5.5},  # Adjusted for more complex patterns
 }
