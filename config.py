@@ -1,10 +1,20 @@
+"""
+Archivo de configuración para la implementación del Snake DQN (Red Q Profunda).
+Contiene todos los hiperparámetros y constantes utilizados en el proyecto:
+- Colores de visualización y configuración visual
+- Parámetros de entrenamiento (épocas, tasa de aprendizaje, tamaño de lote)
+- Configuración de memoria y búfer de repetición
+- Parámetros de temperatura y exploración
+- Umbrales de alerta para monitorear el rendimiento del entrenamiento
+"""
+
 WHITE = (255, 255, 255)
 RED = (220, 20, 60)
 BLUE1 = (30, 144, 255)
 BLUE2 = (0, 100, 255)
 BLACK = (0, 0, 0)
 
-MAX_EPOCHS = 2_500
+MAX_EPOCHS = 2_600
 BLOCK_SIZE = 20
 SPEED = 60
 
@@ -24,7 +34,6 @@ EXPLORATION_FREQUENCY = 100
 EXPLORATION_TEMP = 0.89
 EXPLORATION_DURATION = 10
 
-# --------- NUEVOS PARÁMETROS ---------
 
 # Sistema de alertas: umbrales para métricas clave
 ALERT_THRESHOLDS = {

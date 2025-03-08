@@ -1,3 +1,21 @@
+"""
+Módulo auxiliar para la implementación del Snake DQN.
+Contiene funciones de utilidad para:
+- Visualización del entrenamiento y gráficas de progreso
+- Registro y análisis de métricas del juego
+- Monitoreo del rendimiento del modelo
+- Sistema de alertas para problemas de entrenamiento
+- Persistencia y análisis de datos
+- Cálculos estadísticos del rendimiento del agente
+- Herramientas de depuración y diagnóstico
+
+Cada función está diseñada para apoyar el proceso de entrenamiento proporcionando:
+- Visualización en tiempo real del progreso del entrenamiento
+- Recopilación y análisis integral de métricas
+- Sistema de alerta temprana para problemas de entrenamiento
+- Análisis y seguimiento de mejoras en el rendimiento
+"""
+
 import os
 import pandas as pd
 from datetime import datetime
@@ -128,12 +146,6 @@ def log_game_results(agent, score, record, game, avg_loss=None):
             summary_cols = ["game_number", "score", "steps_taken", "total_reward", "avg_reward", "efficiency_ratio"]
             available_cols = [col for col in summary_cols if col in df_game_results.columns]
             
-            # Add rolling averages directly to the main dataframe
-            for col in available_cols:
-                if col != "game_number":
-                    df_game_results[f"{col}_avg10"] = df_game_results[col].rolling(10).mean()
-                    df_game_results[f"{col}_avg50"] = df_game_results[col].rolling(50).mean()
-        
         # Save the single unified CSV file
         save_game_results(agent, df_game_results)
 
@@ -157,7 +169,7 @@ def create_analysis_plots(df, save_path="plots/analysis"):
         
         plt.plot(df['game_number'], df['w2_w1_ratio'], color='purple', label='w2/w1 ratio')
         plt.plot(df['game_number'], df['w3_w1_ratio'], color='orange', label='w3/w1 ratio')
-        plt.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
+        plt.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
         
         plt.title('Weight Norm Ratios (Ideal: closer to 1.0)')
         plt.xlabel('Game Number')

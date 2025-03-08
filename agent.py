@@ -1,3 +1,19 @@
+"""
+Implementación principal del agente para el proyecto Snake DQN (Red Q Profunda).
+Este módulo contiene:
+- PrioritizedReplayMemory: Implementación de repetición de experiencia priorizada
+- Agent: Agente DQN principal con exploración basada en temperatura
+- Implementación del bucle de entrenamiento
+
+Características principales:
+- DQN Doble con red objetivo
+- Repetición de experiencia priorizada para mejor eficiencia de muestreo
+- Estrategia de exploración dinámica basada en temperatura
+- Fases de exploración periódicas para mejor descubrimiento de políticas
+- Seguimiento completo de métricas y puntos de control
+- Representación de estado con detección de peligro y ubicación de comida
+"""
+
 import torch
 import numpy as np
 from helper import log_game_results, save_checkpoint, update_plots, print_weight_norms, print_game_info
@@ -244,7 +260,7 @@ def train(max_games: int) -> None:
     while True:
         state_old = agent.get_state(game)
         final_move = agent.get_action(state_old)
-        reward, done, score, ate_food = game.play_step(final_move, agent.n_games, record)
+        reward, done, score = game.play_step(final_move, agent.n_games, record)
         state_new = agent.get_state(game)
         
         agent.train_short_memory(state_old, final_move, reward, state_new, done)

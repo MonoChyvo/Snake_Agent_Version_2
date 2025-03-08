@@ -1,3 +1,22 @@
+"""
+Implementación del entorno del juego Snake para Aprendizaje Q Profundo.
+Este módulo proporciona la mecánica del juego y visualización para la IA de Snake:
+
+Componentes principales:
+- SnakeGameAI: Clase principal del juego con integración de aprendizaje por refuerzo
+- Direction: Enumeración para las direcciones de movimiento de la serpiente
+- Sistema avanzado de recompensas que incluye:
+  * Recompensas basadas en distancia
+  * Bonificaciones por supervivencia
+  * Penalizaciones por ineficiencia
+  * Predicción de colisiones futuras
+- Características visuales:
+  * Mapa de calor para posiciones visitadas
+  * Visualización de puntuación y estadísticas
+  * Renderizado de serpiente y comida
+- Gestión del estado del juego y detección de colisiones
+"""
+
 import pygame
 import random
 import numpy as np
@@ -74,7 +93,7 @@ class SnakeGameAI:
             self.food_locations.append((self.food.x, self.food.y))
 
     def play_step(self, action: List[int], n_game: int, record: int) -> Tuple[int, bool, int]:
-        prev_distance: int = abs(self.head.x - self.food.x) + abs(self.head.y - self.food.y)
+        prev_distance: int = abs(self.head.x - self.food.x) + abs(self.head.y - self.food.y) if self.food else 999999
         
         action_idx = np.argmax(action) if isinstance(action, list) else action
         self.action_history.append(action_idx)
@@ -112,7 +131,7 @@ class SnakeGameAI:
         ate_food: bool = False
         
         # Calculate current distance to food after move
-        current_distance: int = abs(self.head.x - self.food.x) + abs(self.head.y - self.food.y)
+        current_distance: int = int(abs(self.head.x - self.food.x) + abs(self.food.y - self.head.y)) if self.food else 999999
     
         
         # Check for game over conditions
@@ -120,10 +139,10 @@ class SnakeGameAI:
             game_over = True
             # Higher penalty for early deaths, less penalty for deaths after longer games
             base_penalty = -10
-            survival_factor = min(len(self.snake) / 10, 1.0)  # Cap at 1.0
-            reward = base_penalty * (1 - 0.5 * survival_factor)  # Less penalty if snake is longer
+            survival_factor = min(len(self.snake) // 10, 1)  # Cap at 1, using integer division
+            reward = int(base_penalty * (1 - 0.5 * survival_factor))  # Convert to int
             self.reward_history.append(reward)
-            return reward, game_over, self.score, ate_food
+            return reward, game_over, self.score
 
         # Check for food eaten
         if self.head == self.food:
@@ -132,7 +151,7 @@ class SnakeGameAI:
             # Reward scales with snake length - more reward for growing longer
             base_reward = 1.0
             length_bonus = min(len(self.snake) * 0.5, 10)  # Cap at +10 bonus
-            reward = base_reward + length_bonus
+            reward = int(base_reward + length_bonus)
             self.reward_history.append(reward)
             self._place_food()
         else:
@@ -176,7 +195,7 @@ class SnakeGameAI:
                     break
 
             # Combined reward - añadir future_penalty a la combinación
-            reward = distance_reward + survival_reward + efficiency_penalty + danger_reward + future_penalty
+            reward = int(distance_reward + survival_reward + efficiency_penalty + danger_reward + future_penalty)
             
 
             # Store reward and remove tail
@@ -185,7 +204,7 @@ class SnakeGameAI:
             
         self._update_ui()
         self.clock.tick(SPEED)
-        return reward, game_over, self.score, ate_food
+        return reward, game_over, self.score
     
     def _get_next_position(self, point, direction):
         """Helper to get next position in a given direction."""
@@ -235,7 +254,9 @@ class SnakeGameAI:
         for pt in self.snake:
             pygame.draw.rect(self.display, BLUE1, pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE))
             pygame.draw.rect(self.display, BLUE2, pygame.Rect(pt.x + 4, pt.y + 4, 12, 12))
-        pygame.draw.rect(self.display, RED, pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE))
+            
+        if self.food is not None:  # Check if food exists before drawing
+            pygame.draw.rect(self.display, RED, pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE))
     
         score_text = font.render(f"Score: {self.score}", True, WHITE)
         n_game_text = font.render(f"Game: {self.n_game + 1}", True, WHITE)

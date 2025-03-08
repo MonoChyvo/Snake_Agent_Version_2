@@ -1,4 +1,22 @@
-# modelo de red neuronal profunda (DQN) y un entrenador asociado para implementar el algoritmo de aprendizaje por refuerzo
+"""
+Modelo de red neuronal y componentes de entrenamiento para la implementación del Snake DQN.
+Este módulo contiene:
+
+Componentes principales:
+- DQN: Arquitectura de Red Q Profunda con funcionalidad de guardado/carga
+- QTrainer: Implementación del entrenamiento con:
+  * Algoritmo DQN Doble
+  * Regularización L2 con coeficientes específicos por capa
+  * Seguimiento de gradientes y monitoreo de cambios en pesos
+  * Cálculo avanzado de pérdida con muestreo por importancia
+  * Gestión de puntos de control para persistencia del modelo
+
+Características:
+- Selección automática de dispositivo (CPU/CUDA)
+- Sistema de registro completo
+- Manejo de errores para operaciones del modelo
+- Monitoreo de rendimiento y herramientas de depuración
+"""
 
 import os
 import torch
