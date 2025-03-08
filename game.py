@@ -78,6 +78,7 @@ class SnakeGameAI:
         self.steps = 0
         
         self.visit_map = np.zeros((self.width // BLOCK_SIZE, self.height // BLOCK_SIZE))
+        self.decay_rate = 0.95
 
     def _place_food(self):
         """Coloca comida en una posición aleatoria."""
@@ -201,6 +202,8 @@ class SnakeGameAI:
             # Store reward and remove tail
             self.reward_history.append(reward)
             self.snake.pop()
+        
+        self.visit_map *= self.decay_rate
             
         self._update_ui()
         self.clock.tick(SPEED)
@@ -240,7 +243,7 @@ class SnakeGameAI:
             for x in range(self.width // BLOCK_SIZE):
                 for y in range(self.height // BLOCK_SIZE):
                     visits = self.visit_map[x, y]
-                    if visits > 0:
+                    if visits > 0.1:
                         # Color intensity based on visit count (darker = more visits)
                         intensity = min(255, int(100 + (visits / max_visits) * 155))
                         heat_color = (intensity, 0, 0)  # Rojo con intensidad variable

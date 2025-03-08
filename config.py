@@ -14,32 +14,32 @@ BLUE1 = (30, 144, 255)
 BLUE2 = (0, 100, 255)
 BLACK = (0, 0, 0)
 
-MAX_EPOCHS = 2_600
+MAX_EPOCHS = 4_000
 BLOCK_SIZE = 20
-SPEED = 60
+SPEED = 80
 
-MAX_MEMORY = 150_000
-LR = 0.002
-GAMMA = 0.96
-BATCH_SIZE = 512
-TAU = 0.002
+MAX_MEMORY = 300_000
+LR = 0.0008
+GAMMA = 0.995
+BATCH_SIZE = 2048
+TAU = 0.003
 
-TEMPERATURE = 0.61
-MIN_TEMPERATURE = 0.05
+TEMPERATURE = 0.82
+MIN_TEMPERATURE = 0.15
 PREV_LOSS = 0.0
-DECAY_RATE = 0.9992
+DECAY_RATE = 0.9997
 
 EXPLORATION_PHASE = False
-EXPLORATION_FREQUENCY = 100
-EXPLORATION_TEMP = 0.89
-EXPLORATION_DURATION = 10
+EXPLORATION_FREQUENCY = 75
+EXPLORATION_TEMP = 0.95
+EXPLORATION_DURATION = 15
 
 
 # Sistema de alertas: umbrales para métricas clave
 ALERT_THRESHOLDS = {
-    'loss': {'high': 1.0, 'critical': 2.0},  # Valores altos indican problemas
-    'avg_reward': {'low': -0.5, 'critical': -1.0},  # Valores bajos indican problemas
-    'efficiency_ratio': {'low': 0.6},  # Bajo ratio de eficiencia indica movimiento ineficiente
-    'steps_per_food': {'high': 100},  # Muchos pasos por comida indica ineficiencia
-    'weight_norm_ratio': {'high': 3.0, 'critical': 5.0},  # Ratios muy diferentes indican desbalance
+    'loss': {'high': 1.5, 'critical': 2.5},  # Increased tolerance for complex scenarios
+    'avg_reward': {'low': -0.8, 'critical': -1.5},  # Adjusted for longer episodes
+    'efficiency_ratio': {'low': 0.5},  # Relaxed for longer snake
+    'steps_per_food': {'high': 150},  # Increased for longer snake scenarios
+    'weight_norm_ratio': {'high': 3.5, 'critical': 5.5},  # Adjusted for more complex patterns
 }

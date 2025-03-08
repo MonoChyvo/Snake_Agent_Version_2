@@ -48,8 +48,7 @@ class PrioritizedReplayMemory:
         if len(self.priorities) != len(self.memory):
             self.priorities = np.ones(len(self.memory), dtype=np.float32).tolist()
 
-        epsilon = 1e-6  # Valor pequeño para asegurar diversidad
-        priorities = np.array(self.priorities, dtype=np.float32) + epsilon
+        priorities = np.array(self.priorities, dtype=np.float32)
         probabilities = priorities / priorities.sum()
         indices = np.random.choice(len(self.memory), batch_size, p=probabilities)
         mini_sample = [self.memory[i] for i in indices]
