@@ -269,7 +269,6 @@ class SnakeGameAI:
         self.display.fill(BLACK)
 
         if hasattr(self, "visit_map"):
-            max_visits = np.max(self.visit_map) if np.max(self.visit_map) > 0 else 1
             for x in range(self.width // BLOCK_SIZE):
                 for y in range(self.height // BLOCK_SIZE):
                     visits = self.visit_map[x, y]
@@ -308,55 +307,52 @@ class SnakeGameAI:
                     (pt.x + BLOCK_SIZE // 2, pt.y + BLOCK_SIZE // 2),
                     BLOCK_SIZE // 3,
                 )
-            else:  # Cuerpo con gradiente
+            else:  # Cuerpo con gradiente redondeado
                 color_factor = 1 - (i / len(self.snake))
                 body_color = (
-                    int(30 + 225 * color_factor),
-                    int(144 * color_factor),
-                    int(255 * color_factor),
+                    int(30 + 225 * color_factor),      # From blue's base: 30 to 255 for pink
+                    int(144 - 39 * color_factor),       # From 144 to 105
+                    int(255 - 75 * color_factor),       # From 255 to 180
                 )
                 pygame.draw.rect(
                     self.display,
                     body_color,
                     pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE),
-                )
-                pygame.draw.circle(
-                    self.display,
-                    (173, 216, 230),
-                    (pt.x + BLOCK_SIZE // 2, pt.y + BLOCK_SIZE // 2),
-                    BLOCK_SIZE // 3,
+                    border_radius=BLOCK_SIZE // 2  # parámetro para redondear
                 )
 
-        # Comida con efectos visuales
+        # Comida con efectos visuales - modificado para una manzana dorada metálica que brille
         if self.food is not None:
-            # Base con gradiente animado
-            pygame.draw.circle(
-                self.display,
-                (255, 87, 51),
-                (self.food.x + BLOCK_SIZE // 2, self.food.y + BLOCK_SIZE // 2),
-                BLOCK_SIZE // 2,
-            )
-
-            # Efecto de partículas
-            for i in range(3):
-                radius = BLOCK_SIZE // 2 + i * 2
-                alpha = 100 - i * 30
-                surface = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
-                pygame.draw.circle(
-                    surface,
-                    (255, 255, 0, alpha),
-                    (BLOCK_SIZE // 2, BLOCK_SIZE // 2),
-                    radius,
+            # Definir el rectángulo de la "manzana"
+            apple_rect = pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE)
+            
+            # Dibujar un contorno metálico brillante (efecto glow)
+            for i in range(3, 0, -1):
+                glow_color = (min(255, 255 - i*20), min(215, 215 - i*20), 0)
+                pygame.draw.ellipse(
+                    self.display,
+                    glow_color,
+                    apple_rect.inflate(i*4, i*4),
+                    width=2
                 )
-                self.display.blit(surface, (self.food.x, self.food.y))
-
-            # Contorno brillante
-            pygame.draw.circle(
+            
+            # Dibujar la manzana dorada principal
+            pygame.draw.ellipse(
                 self.display,
-                (255, 255, 0),
-                (self.food.x + BLOCK_SIZE // 2, self.food.y + BLOCK_SIZE // 2),
-                BLOCK_SIZE // 2,
-                2,
+                (255, 215, 0),  # color dorado
+                apple_rect
+            )
+            
+            # Añadir reflejos para simular un acabado metálico brillante
+            highlight_rect = apple_rect.copy()
+            highlight_rect.width = int(apple_rect.width * 0.5)
+            highlight_rect.height = int(apple_rect.height * 0.3)
+            highlight_rect.x += 2
+            highlight_rect.y += 2
+            pygame.draw.ellipse(
+                self.display,
+                (255, 255, 224),  # tono claro para el reflejo
+                highlight_rect
             )
 
         score_text = font.render(f"Score: {self.score}", True, WHITE)

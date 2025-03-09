@@ -16,7 +16,7 @@ BLACK = (0, 0, 0)
 
 MAX_EPOCHS = 4_000
 BLOCK_SIZE = 20
-SPEED = 80
+SPEED = 60
 
 # Memory management parameters
 MAX_MEMORY = 300_000
