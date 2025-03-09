@@ -294,19 +294,69 @@ class SnakeGameAI:
                             1,
                         )
 
-        for pt in self.snake:
-            pygame.draw.rect(
-                self.display, BLUE1, pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE)
-            )
-            pygame.draw.rect(
-                self.display, BLUE2, pygame.Rect(pt.x + 4, pt.y + 4, 12, 12)
+        # Renderizado mejorado de la serpiente
+        for i, pt in enumerate(self.snake):
+            if i == 0:  # Cabeza con diseño especial
+                pygame.draw.ellipse(
+                    self.display,
+                    (255, 215, 0),
+                    pygame.Rect(pt.x - 2, pt.y - 2, BLOCK_SIZE + 4, BLOCK_SIZE + 4),
+                )
+                pygame.draw.circle(
+                    self.display,
+                    (255, 255, 0),
+                    (pt.x + BLOCK_SIZE // 2, pt.y + BLOCK_SIZE // 2),
+                    BLOCK_SIZE // 3,
+                )
+            else:  # Cuerpo con gradiente
+                color_factor = 1 - (i / len(self.snake))
+                body_color = (
+                    int(30 + 225 * color_factor),
+                    int(144 * color_factor),
+                    int(255 * color_factor),
+                )
+                pygame.draw.rect(
+                    self.display,
+                    body_color,
+                    pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE),
+                )
+                pygame.draw.circle(
+                    self.display,
+                    (173, 216, 230),
+                    (pt.x + BLOCK_SIZE // 2, pt.y + BLOCK_SIZE // 2),
+                    BLOCK_SIZE // 3,
+                )
+
+        # Comida con efectos visuales
+        if self.food is not None:
+            # Base con gradiente animado
+            pygame.draw.circle(
+                self.display,
+                (255, 87, 51),
+                (self.food.x + BLOCK_SIZE // 2, self.food.y + BLOCK_SIZE // 2),
+                BLOCK_SIZE // 2,
             )
 
-        if self.food is not None:  # Check if food exists before drawing
-            pygame.draw.rect(
+            # Efecto de partículas
+            for i in range(3):
+                radius = BLOCK_SIZE // 2 + i * 2
+                alpha = 100 - i * 30
+                surface = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE), pygame.SRCALPHA)
+                pygame.draw.circle(
+                    surface,
+                    (255, 255, 0, alpha),
+                    (BLOCK_SIZE // 2, BLOCK_SIZE // 2),
+                    radius,
+                )
+                self.display.blit(surface, (self.food.x, self.food.y))
+
+            # Contorno brillante
+            pygame.draw.circle(
                 self.display,
-                RED,
-                pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE),
+                (255, 255, 0),
+                (self.food.x + BLOCK_SIZE // 2, self.food.y + BLOCK_SIZE // 2),
+                BLOCK_SIZE // 2,
+                2,
             )
 
         score_text = font.render(f"Score: {self.score}", True, WHITE)
