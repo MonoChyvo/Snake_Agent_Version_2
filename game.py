@@ -56,6 +56,14 @@ class SnakeGameAI:
         pygame.display.set_caption("Training Snake")
         self.clock = pygame.time.Clock()
 
+        # Cargar imagen de manzana
+        try:
+            self.apple_image = pygame.image.load("apple.png").convert_alpha()
+            self.apple_image = pygame.transform.scale(self.apple_image, (BLOCK_SIZE, BLOCK_SIZE))
+        except Exception as e:
+            print("Error loading apple image, using fallback drawing.")
+            self.apple_image = None
+
         self.steps = 0
         self.reward_history = []
         self.action_history = []
@@ -82,6 +90,7 @@ class SnakeGameAI:
         self.steps = 0
 
         self.visit_map = np.zeros((self.width // BLOCK_SIZE, self.height // BLOCK_SIZE))
+        self.particles = []  # Inicializar lista de partículas para confeti
 
     def _place_food(self):
         """Coloca comida en una posición aleatoria."""
@@ -169,6 +178,8 @@ class SnakeGameAI:
         # Check for food eaten
         if self.head == self.food:
             self.score += 1
+            # Generar partículas de confeti al comer comida
+            self.spawn_confetti(self.food)
             # Reward scales with snake length - more reward for growing longer
             base_reward = 1.0
             length_bonus = min(len(self.snake) * 0.5, 10)  # Cap at +10 bonus
@@ -234,6 +245,18 @@ class SnakeGameAI:
         self.clock.tick(SPEED)
         return reward, game_over, self.score
 
+    def spawn_confetti(self, position):
+        """Genera partículas de confeti en la posición dada."""
+        num_particles = 20
+        for _ in range(num_particles):
+            particle = {
+                'pos': [position.x + BLOCK_SIZE // 2, position.y + BLOCK_SIZE // 2],
+                'vel': [random.uniform(-2, 2), random.uniform(-2, 2)],
+                'color': (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)),
+                'lifetime': random.uniform(20, 40)
+            }
+            self.particles.append(particle)
+
     def _get_next_position(self, point, direction):
         """Helper to get next position in a given direction."""
         x, y = point.x, point.y
@@ -268,92 +291,56 @@ class SnakeGameAI:
         """Actualiza la interfaz gráfica."""
         self.display.fill(BLACK)
 
-        if hasattr(self, "visit_map"):
-            for x in range(self.width // BLOCK_SIZE):
-                for y in range(self.height // BLOCK_SIZE):
-                    visits = self.visit_map[x, y]
-                    if visits > 0:
-                        # Comenzar con un color tenue y aumentar la intensidad con cada visita
-                        base_intensity = 30  # Valor base bajo para el primer paso
-                        added_intensity = min(
-                            225, visits * 20
-                        )  # Incremento gradual, máximo 255
-                        intensity = int(base_intensity + added_intensity)
+        # Actualizar y renderizar partículas (efecto confeti)
+        for particle in self.particles[:]:
+            # Actualizar posición y disminuir lifetime
+            particle['pos'][0] += particle['vel'][0]
+            particle['pos'][1] += particle['vel'][1]
+            particle['lifetime'] -= 1
+            # Dibujar partícula
+            pygame.draw.circle(self.display, particle['color'], (int(particle['pos'][0]), int(particle['pos'][1])), 2)
+            if particle['lifetime'] <= 0:
+                self.particles.remove(particle)
 
-                        # Añadir componente verde para hacer el color más brillante con más visitas
-                        green_component = min(255, int(visits * 15))
-                        heat_color = (intensity, green_component, 0)
-
-                        pygame.draw.rect(
-                            self.display,
-                            heat_color,
-                            pygame.Rect(
-                                x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE
-                            ),
-                            1,
-                        )
-
-        # Renderizado mejorado de la serpiente
+        # Renderizado mejorado de la serpiente con sombra
         for i, pt in enumerate(self.snake):
-            if i == 0:  # Cabeza con diseño especial
-                pygame.draw.ellipse(
-                    self.display,
-                    (255, 215, 0),
-                    pygame.Rect(pt.x - 2, pt.y - 2, BLOCK_SIZE + 4, BLOCK_SIZE + 4),
-                )
-                pygame.draw.circle(
-                    self.display,
-                    (255, 255, 0),
-                    (pt.x + BLOCK_SIZE // 2, pt.y + BLOCK_SIZE // 2),
-                    BLOCK_SIZE // 3,
-                )
-            else:  # Cuerpo con gradiente redondeado
-                color_factor = 1 - (i / len(self.snake))
-                body_color = (
-                    int(30 + 225 * color_factor),      # From blue's base: 30 to 255 for pink
-                    int(144 - 39 * color_factor),       # From 144 to 105
-                    int(255 - 75 * color_factor),       # From 255 to 180
-                )
-                pygame.draw.rect(
-                    self.display,
-                    body_color,
-                    pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE),
-                    border_radius=BLOCK_SIZE // 2  # parámetro para redondear
-                )
+            # Definir el rectángulo del segmento
+            snake_rect = pygame.Rect(pt.x, pt.y, BLOCK_SIZE, BLOCK_SIZE)
+            # Dibujar sombra (desplazada 3 píxeles a la derecha y abajo)
+            shadow_offset = 3
+            shadow_color = (50, 50, 50)
+            shadow_rect = snake_rect.copy()
+            shadow_rect.x += shadow_offset
+            shadow_rect.y += shadow_offset
+            pygame.draw.rect(
+                self.display,
+                shadow_color,
+                shadow_rect,
+                border_radius=BLOCK_SIZE // 2
+            )
+            # Dibujar el segmento de la serpiente
+            color_factor = 1 - (i / len(self.snake))
+            body_color = (
+                int(30 + 225 * color_factor),
+                int(144 - 39 * color_factor),
+                int(255 - 75 * color_factor),
+            )
+            pygame.draw.rect(
+                self.display,
+                body_color,
+                snake_rect,
+                border_radius=BLOCK_SIZE // 2
+            )
 
-        # Comida con efectos visuales - modificado para una manzana dorada metálica que brille
+        # Comida: usar imagen PNG de manzana si está disponible
         if self.food is not None:
-            # Definir el rectángulo de la "manzana"
-            apple_rect = pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE, BLOCK_SIZE)
-            
-            # Dibujar un contorno metálico brillante (efecto glow)
-            for i in range(3, 0, -1):
-                glow_color = (min(255, 255 - i*20), min(215, 215 - i*20), 0)
-                pygame.draw.ellipse(
-                    self.display,
-                    glow_color,
-                    apple_rect.inflate(i*4, i*4),
-                    width=2
-                )
-            
-            # Dibujar la manzana dorada principal
-            pygame.draw.ellipse(
-                self.display,
-                (255, 215, 0),  # color dorado
-                apple_rect
-            )
-            
-            # Añadir reflejos para simular un acabado metálico brillante
-            highlight_rect = apple_rect.copy()
-            highlight_rect.width = int(apple_rect.width * 0.5)
-            highlight_rect.height = int(apple_rect.height * 0.3)
-            highlight_rect.x += 2
-            highlight_rect.y += 2
-            pygame.draw.ellipse(
-                self.display,
-                (255, 255, 224),  # tono claro para el reflejo
-                highlight_rect
-            )
+            apple_rect = pygame.Rect(self.food.x, self.food.y, BLOCK_SIZE * 1.5, BLOCK_SIZE * 1.5)  # Increase size by 1.5x
+            if self.apple_image:
+                self.apple_image = pygame.transform.scale(self.apple_image, (BLOCK_SIZE, BLOCK_SIZE))  # Resize image
+                self.display.blit(self.apple_image, apple_rect)
+            else:
+                pygame.draw.rect(self.display, (255, 0, 0), apple_rect, border_radius=5)
+                pygame.draw.rect(self.display, (0, 0, 0), apple_rect, 2, border_radius=5)
 
         score_text = font.render(f"Score: {self.score}", True, WHITE)
         n_game_text = font.render(f"Game: {self.n_game + 1}", True, WHITE)
