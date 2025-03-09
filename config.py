@@ -18,7 +18,12 @@ MAX_EPOCHS = 4_000
 BLOCK_SIZE = 20
 SPEED = 80
 
+# Memory management parameters
 MAX_MEMORY = 300_000
+MEMORY_MONITOR_FREQ = 1000  # Check memory usage every X games
+MEMORY_PRUNE_THRESHOLD = 0.9  # Prune when buffer is 90% full
+MEMORY_PRUNE_FACTOR = 0.7  # Keep 70% of experiences after pruning
+
 LR = 0.0008
 GAMMA = 0.995
 BATCH_SIZE = 2048
@@ -41,5 +46,8 @@ ALERT_THRESHOLDS = {
     "avg_reward": {"low": -0.8, "critical": -1.5},  # Adjusted for longer episodes
     "efficiency_ratio": {"low": 0.5},  # Relaxed for longer snake
     "steps_per_food": {"high": 150},  # Increased for longer snake scenarios
-    "weight_norm_ratio": {"high": 3.5, "critical": 5.5},  # Adjusted for more complex patterns
+    "weight_norm_ratio": {
+        "high": 3.5,
+        "critical": 5.5,
+    },  # Adjusted for more complex patterns
 }

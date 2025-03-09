@@ -28,7 +28,9 @@ from colorama import Fore, Style
 from datetime import datetime
 
 # Configure logging if it has not been set up
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -54,6 +56,7 @@ class DQN(nn.Module):
         loss=None,
         last_record_game=None,
         record=None,
+        pathfinding_enabled=True,
     ):
         os.makedirs(folder_path, exist_ok=True)
         checkpoint = {
@@ -63,12 +66,17 @@ class DQN(nn.Module):
             "loss": loss,
             "last_record_game": last_record_game,
             "record": record,
+            "pathfinding_enabled": pathfinding_enabled,
         }
         checkpoint_path = os.path.join(folder_path, file_name)
         try:
             torch.save(checkpoint, checkpoint_path)
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            print(Fore.CYAN + f"Modelo guardado en {checkpoint_path} el {current_time}" + Style.RESET_ALL)
+            print(
+                Fore.CYAN
+                + f"Modelo guardado en {checkpoint_path} el {current_time}"
+                + Style.RESET_ALL
+            )
             print(Fore.RED + "-" * 60 + Style.RESET_ALL)
             print("")
             print("")
@@ -79,7 +87,7 @@ class DQN(nn.Module):
         folder_fullpath = folder_path
         if not os.path.exists(folder_fullpath):
             logging.error(f"Directory {folder_fullpath} does not exist.")
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         file_path = os.path.join(folder_fullpath, file_name)
         try:
@@ -90,18 +98,26 @@ class DQN(nn.Module):
             optimizer_state_dict = checkpoint.get("optimizer_state_dict", None)
             last_record_game = checkpoint.get("last_record_game", 0)
             record = checkpoint.get("record", 0)
+            pathfinding_enabled = checkpoint.get("pathfinding_enabled", True)
             print(
                 Fore.LIGHTYELLOW_EX
-                + f"\nUnified checkpoint: '{file_name}' \nLoaded from: {folder_fullpath}. \nTotal games: {n_games}, \nRecord: {record}"
+                + f"\nUnified checkpoint: '{file_name}' \nLoaded from: {folder_fullpath}. \nTotal games: {n_games}, \nRecord: {record}, \nPathfinding: {'enabled' if pathfinding_enabled else 'disabled'}"
                 + Style.RESET_ALL
             )
-            return n_games, loss, optimizer_state_dict, last_record_game, record
+            return (
+                n_games,
+                loss,
+                optimizer_state_dict,
+                last_record_game,
+                record,
+                pathfinding_enabled,
+            )
         except FileNotFoundError:
             logging.error(f"File {file_path} not found.")
-            return None, None, None, None, None
+            return None, None, None, None, None, None  # Add one more None
         except Exception as e:
             logging.error(f"Error loading unified checkpoint '{file_name}': {e}")
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
 
 class QTrainer:
@@ -128,7 +144,9 @@ class QTrainer:
         action = self._prepare_tensor(action, torch.int64)
         reward = self._prepare_tensor(reward, torch.float32)
         done = self._prepare_tensor(done, torch.float32)
-        weights = torch.tensor(weights, dtype=torch.float32).to(device)  # No se aplica unsqueeze a weights
+        weights = torch.tensor(weights, dtype=torch.float32).to(
+            device
+        )  # No se aplica unsqueeze a weights
 
         # Asegura que action tenga forma [batch, 1]
         if action.dim() == 1:
@@ -144,7 +162,9 @@ class QTrainer:
         l2_reg = 0
         for name, param in self.model.named_parameters():
             if "weight" in name:
-                layer_name = name.split(".")[0]  # Obtiene 'linear1', 'linear2' o 'linear3'
+                layer_name = name.split(".")[
+                    0
+                ]  # Obtiene 'linear1', 'linear2' o 'linear3'
                 if layer_name in self.l2_lambdas:
                     l2_reg += self.l2_lambdas[layer_name] * param.pow(2).sum()
 
@@ -152,14 +172,18 @@ class QTrainer:
         loss = (weights * (pred - target.detach()).pow(2)).mean() + l2_reg
 
         # Obtén estadísticas previas (p.ej. pesos antes de actualizar)
-        old_weights = {name: param.clone() for name, param in self.model.named_parameters()}
+        old_weights = {
+            name: param.clone() for name, param in self.model.named_parameters()
+        }
 
         self.optimizer.zero_grad()
         loss.backward()
 
         # Logear la magnitud de los gradientes
         grad_norms = {
-            name: param.grad.norm().item() for name, param in self.model.named_parameters() if param.grad is not None
+            name: param.grad.norm().item()
+            for name, param in self.model.named_parameters()
+            if param.grad is not None
         }
         logging.debug(f"Gradient norms: {grad_norms}")
 
@@ -171,11 +195,14 @@ class QTrainer:
             if "weight" in name:
                 layer_name = name.split(".")[0]
                 if layer_name in self.l2_lambdas:
-                    l2_contributions[layer_name] = self.l2_lambdas[layer_name] * param.pow(2).sum().item()
+                    l2_contributions[layer_name] = (
+                        self.l2_lambdas[layer_name] * param.pow(2).sum().item()
+                    )
 
         # Calcula y logea los cambios en los pesos
         weight_changes = {
-            name: (param - old_weights[name]).norm().item() for name, param in self.model.named_parameters()
+            name: (param - old_weights[name]).norm().item()
+            for name, param in self.model.named_parameters()
         }
         logging.debug(f"Weight changes: {weight_changes}")
 

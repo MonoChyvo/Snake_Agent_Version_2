@@ -25,7 +25,13 @@ import numpy as np
 from config import ALERT_THRESHOLDS
 
 
-def plot_training_progress(scores, mean_scores, save_plot=False, save_path="plots", filename="training_progress.png"):
+def plot_training_progress(
+    scores,
+    mean_scores,
+    save_plot=False,
+    save_path="plots",
+    filename="training_progress.png",
+):
     plt.clf()
     plt.title("Training Progress")
     plt.xlabel("Number of Games")
@@ -55,7 +61,9 @@ def log_game_results(agent, score, record, game, avg_loss=None):
 
     # Calculate efficiency metrics
     snake_length = len(game.snake) if hasattr(game, "snake") else score + 1
-    unique_positions = len(set((p.x, p.y) for p in game.snake)) if hasattr(game, "snake") else 0
+    unique_positions = (
+        len(set((p.x, p.y) for p in game.snake)) if hasattr(game, "snake") else 0
+    )
     efficiency_ratio = unique_positions / snake_length if snake_length > 0 else 0
 
     # Calculate reward statistics
@@ -92,10 +100,14 @@ def log_game_results(agent, score, record, game, avg_loss=None):
 
             # Añadir ratios de pesos para monitoreo
             weight_stats["w2_w1_ratio"] = (
-                weight_stats["w2_norm"] / weight_stats["w1_norm"] if weight_stats["w1_norm"] > 0 else 0
+                weight_stats["w2_norm"] / weight_stats["w1_norm"]
+                if weight_stats["w1_norm"] > 0
+                else 0
             )
             weight_stats["w3_w1_ratio"] = (
-                weight_stats["w3_norm"] / weight_stats["w1_norm"] if weight_stats["w1_norm"] > 0 else 0
+                weight_stats["w3_norm"] / weight_stats["w1_norm"]
+                if weight_stats["w1_norm"] > 0
+                else 0
             )
         except Exception as e:
             print(f"Could not get weight norms: {e}")
@@ -118,16 +130,26 @@ def log_game_results(agent, score, record, game, avg_loss=None):
         "exploration_rate": agent.epsilon if hasattr(agent, "epsilon") else None,
         # Environment Understanding
         "food_distance_stats": {
-            "mean": np.mean(game.food_distances) if hasattr(game, "food_distances") else None,
+            "mean": np.mean(game.food_distances)
+            if hasattr(game, "food_distances")
+            else None,
             "initial_vs_final_ratio": compute_distance_progress(game.food_distances)
             if hasattr(game, "food_distances")
             else None,
         },
-        "open_space_ratio": game.avg_open_space_ratio if hasattr(game, "avg_open_space_ratio") else None,
+        "open_space_ratio": game.avg_open_space_ratio
+        if hasattr(game, "avg_open_space_ratio")
+        else None,
         # Temporal Performance
-        "avg_decision_time": np.mean(game.decision_times) if hasattr(game, "decision_times") else None,
-        "game_duration_seconds": game.game_duration if hasattr(game, "game_duration") else None,
-        "performance_improvement": calculate_improvement_rate(agent) if hasattr(agent, "recent_scores") else None,
+        "avg_decision_time": np.mean(game.decision_times)
+        if hasattr(game, "decision_times")
+        else None,
+        "game_duration_seconds": game.game_duration
+        if hasattr(game, "game_duration")
+        else None,
+        "performance_improvement": calculate_improvement_rate(agent)
+        if hasattr(agent, "recent_scores")
+        else None,
     }
 
     # Add action distribution if available
@@ -150,8 +172,17 @@ def log_game_results(agent, score, record, game, avg_loss=None):
 
         # Create summary with rolling averages for key metrics
         if len(df_game_results) >= 10:  # Only if we have enough data
-            summary_cols = ["game_number", "score", "steps_taken", "total_reward", "avg_reward", "efficiency_ratio"]
-            available_cols = [col for col in summary_cols if col in df_game_results.columns]
+            summary_cols = [
+                "game_number",
+                "score",
+                "steps_taken",
+                "total_reward",
+                "avg_reward",
+                "efficiency_ratio",
+            ]
+            available_cols = [
+                col for col in summary_cols if col in df_game_results.columns
+            ]
 
         # Save the single unified CSV file
         save_game_results(agent, df_game_results)
@@ -174,8 +205,12 @@ def create_analysis_plots(df, save_path="plots/analysis"):
         df["w2_w1_ratio"] = df["w2_norm"] / df["w1_norm"]
         df["w3_w1_ratio"] = df["w3_norm"] / df["w1_norm"]
 
-        plt.plot(df["game_number"], df["w2_w1_ratio"], color="purple", label="w2/w1 ratio")
-        plt.plot(df["game_number"], df["w3_w1_ratio"], color="orange", label="w3/w1 ratio")
+        plt.plot(
+            df["game_number"], df["w2_w1_ratio"], color="purple", label="w2/w1 ratio"
+        )
+        plt.plot(
+            df["game_number"], df["w3_w1_ratio"], color="orange", label="w3/w1 ratio"
+        )
         plt.axhline(y=1, color="gray", linestyle="--", alpha=0.5)
 
         plt.title("Weight Norm Ratios (Ideal: closer to 1.0)")
@@ -188,8 +223,19 @@ def create_analysis_plots(df, save_path="plots/analysis"):
     # 2. Reward analysis
     if "avg_reward" in df.columns:
         plt.figure(figsize=(12, 6))
-        plt.plot(df["game_number"], df["avg_reward"], color="orange", alpha=0.3, label="Average Reward")
-        plt.plot(df["game_number"], df["avg_reward"].rolling(50).mean(), color="red", label="Avg Reward (50-game)")
+        plt.plot(
+            df["game_number"],
+            df["avg_reward"],
+            color="orange",
+            alpha=0.3,
+            label="Average Reward",
+        )
+        plt.plot(
+            df["game_number"],
+            df["avg_reward"].rolling(50).mean(),
+            color="red",
+            label="Avg Reward (50-game)",
+        )
         plt.title("Reward Analysis")
         plt.xlabel("Game Number")
         plt.ylabel("Average Reward")
@@ -203,13 +249,23 @@ def create_analysis_plots(df, save_path="plots/analysis"):
 
         # Efficiency ratio plot
         ax1.plot(df["game_number"], df["efficiency_ratio"], color="green", alpha=0.3)
-        ax1.plot(df["game_number"], df["efficiency_ratio"].rolling(30).mean(), color="darkgreen", linewidth=2)
+        ax1.plot(
+            df["game_number"],
+            df["efficiency_ratio"].rolling(30).mean(),
+            color="darkgreen",
+            linewidth=2,
+        )
         ax1.set_title("Movement Efficiency")
         ax1.set_ylabel("Efficiency Ratio")
 
         # Steps per food plot
         ax2.plot(df["game_number"], df["steps_per_food"], color="purple", alpha=0.3)
-        ax2.plot(df["game_number"], df["steps_per_food"].rolling(30).mean(), color="darkviolet", linewidth=2)
+        ax2.plot(
+            df["game_number"],
+            df["steps_per_food"].rolling(30).mean(),
+            color="darkviolet",
+            linewidth=2,
+        )
         ax2.set_title("Steps Per Food")
         ax2.set_xlabel("Game Number")
         ax2.set_ylabel("Steps")
@@ -221,7 +277,13 @@ def create_analysis_plots(df, save_path="plots/analysis"):
     # 4. Training metrics
     if "avg_training_loss" in df.columns:
         plt.figure(figsize=(12, 6))
-        plt.plot(df["game_number"], df["avg_training_loss"], color="blue", alpha=0.3, label="Training Loss")
+        plt.plot(
+            df["game_number"],
+            df["avg_training_loss"],
+            color="blue",
+            alpha=0.3,
+            label="Training Loss",
+        )
         plt.plot(
             df["game_number"],
             df["avg_training_loss"].rolling(50).mean(),
@@ -237,12 +299,37 @@ def create_analysis_plots(df, save_path="plots/analysis"):
         plt.savefig(f"{save_path}/training_loss.png")
         plt.close()
 
+    if "memory_usage_mb" in df.columns:
+        plt.figure(figsize=(12, 6))
+        plt.plot(
+            df["game_number"],
+            df["memory_usage_mb"],
+            color="purple",
+            alpha=0.7,
+            label="Replay Buffer Size (MB)",
+        )
+        plt.title("Memory Usage")
+        plt.xlabel("Game Number")
+        plt.ylabel("Memory (MB)")
+        plt.grid(True, alpha=0.3)
+        plt.legend()
+        plt.savefig(f"{save_path}/memory_usage.png")
+        plt.close()
+
     # 5. Model weight norms (if available)
     if all(col in df.columns for col in weight_cols):
         plt.figure(figsize=(12, 6))
         for col, color in zip(weight_cols, ["red", "green", "blue"]):
-            plt.plot(df["game_number"], df[col], alpha=0.3, color=color, label=f"{col} raw")
-            plt.plot(df["game_number"], df[col].rolling(50).mean(), color=color, linewidth=2, label=f"{col} avg")
+            plt.plot(
+                df["game_number"], df[col], alpha=0.3, color=color, label=f"{col} raw"
+            )
+            plt.plot(
+                df["game_number"],
+                df[col].rolling(50).mean(),
+                color=color,
+                linewidth=2,
+                label=f"{col} avg",
+            )
         plt.title("Model Weight Norms")
         plt.xlabel("Game Number")
         plt.ylabel("Norm")
@@ -270,7 +357,9 @@ def update_plots(agent, score, total_score, plot_scores, plot_mean_scores):
         plt.ylim(ymin=0)
         plt.legend()
         plt.text(len(plot_scores) - 1, plot_scores[-1], str(plot_scores[-1]))
-        plt.text(len(plot_mean_scores) - 1, plot_mean_scores[-1], str(plot_mean_scores[-1]))
+        plt.text(
+            len(plot_mean_scores) - 1, plot_mean_scores[-1], str(plot_mean_scores[-1])
+        )
 
         # Save plot to file
         os.makedirs("plots", exist_ok=True)
@@ -282,16 +371,17 @@ def update_plots(agent, score, total_score, plot_scores, plot_mean_scores):
     return total_score
 
 
-def save_checkpoint(agent, loss, filename="model_MARK_IX.pth"):
+def save_checkpoint(agent, loss):
     record_value = agent.record if hasattr(agent, "record") else 0
 
     agent.model.save(
-        filename,
+        "model_MARK_IX.pth",
         n_games=agent.n_games,
         optimizer=agent.trainer.optimizer.state_dict(),
         loss=loss,
         last_record_game=agent.last_record_game,
         record=record_value,
+        pathfinding_enabled=agent.pathfinding_enabled,
     )
 
 
@@ -356,7 +446,9 @@ def compute_action_entropy(q_values_history):
     for q_values in q_values_history:
         # Convert to probabilities using softmax
         q_values = np.array(q_values)
-        exp_q = np.exp(q_values - np.max(q_values))  # Subtract max for numerical stability
+        exp_q = np.exp(
+            q_values - np.max(q_values)
+        )  # Subtract max for numerical stability
         probs = exp_q / np.sum(exp_q)
 
         # Calculate entropy: -sum(p_i * log(p_i))
@@ -413,7 +505,9 @@ def analyze_final_state(game):
     # Calculate various complexity metrics
     if hasattr(game, "snake") and len(game.snake) > 0:
         # Calculate density - higher density means more complex state
-        board_size = game.w * game.h if hasattr(game, "w") and hasattr(game, "h") else 400  # Default 20x20
+        board_size = (
+            game.w * game.h if hasattr(game, "w") and hasattr(game, "h") else 400
+        )  # Default 20x20
         snake_density = len(game.snake) / board_size
         complexity += snake_density * 10  # Weight this component
 
@@ -480,7 +574,10 @@ def check_metrics_alerts(metrics):
     if "loss" in metrics and metrics["loss"] is not None:
         loss_val = metrics["loss"]
         if "loss" in ALERT_THRESHOLDS:
-            if "critical" in ALERT_THRESHOLDS["loss"] and loss_val > ALERT_THRESHOLDS["loss"]["critical"]:
+            if (
+                "critical" in ALERT_THRESHOLDS["loss"]
+                and loss_val > ALERT_THRESHOLDS["loss"]["critical"]
+            ):
                 alerts.append(
                     {
                         "level": "CRITICAL",
@@ -490,7 +587,10 @@ def check_metrics_alerts(metrics):
                         "message": f"Pérdida crítica: {loss_val:.4f} > {ALERT_THRESHOLDS['loss']['critical']}",
                     }
                 )
-            elif "high" in ALERT_THRESHOLDS["loss"] and loss_val > ALERT_THRESHOLDS["loss"]["high"]:
+            elif (
+                "high" in ALERT_THRESHOLDS["loss"]
+                and loss_val > ALERT_THRESHOLDS["loss"]["high"]
+            ):
                 alerts.append(
                     {
                         "level": "WARNING",
@@ -505,7 +605,10 @@ def check_metrics_alerts(metrics):
     if "avg_reward" in metrics and metrics["avg_reward"] is not None:
         reward_val = metrics["avg_reward"]
         if "avg_reward" in ALERT_THRESHOLDS:
-            if "critical" in ALERT_THRESHOLDS["avg_reward"] and reward_val < ALERT_THRESHOLDS["avg_reward"]["critical"]:
+            if (
+                "critical" in ALERT_THRESHOLDS["avg_reward"]
+                and reward_val < ALERT_THRESHOLDS["avg_reward"]["critical"]
+            ):
                 alerts.append(
                     {
                         "level": "CRITICAL",
@@ -515,7 +618,10 @@ def check_metrics_alerts(metrics):
                         "message": f"Recompensa crítica: {reward_val:.4f} < {ALERT_THRESHOLDS['avg_reward']['critical']}",
                     }
                 )
-            elif "low" in ALERT_THRESHOLDS["avg_reward"] and reward_val < ALERT_THRESHOLDS["avg_reward"]["low"]:
+            elif (
+                "low" in ALERT_THRESHOLDS["avg_reward"]
+                and reward_val < ALERT_THRESHOLDS["avg_reward"]["low"]
+            ):
                 alerts.append(
                     {
                         "level": "WARNING",
@@ -548,7 +654,10 @@ def check_metrics_alerts(metrics):
     if "steps_per_food" in metrics and metrics["steps_per_food"] is not None:
         steps_val = metrics["steps_per_food"]
         if "steps_per_food" in ALERT_THRESHOLDS:
-            if "high" in ALERT_THRESHOLDS["steps_per_food"] and steps_val > ALERT_THRESHOLDS["steps_per_food"]["high"]:
+            if (
+                "high" in ALERT_THRESHOLDS["steps_per_food"]
+                and steps_val > ALERT_THRESHOLDS["steps_per_food"]["high"]
+            ):
                 alerts.append(
                     {
                         "level": "WARNING",
