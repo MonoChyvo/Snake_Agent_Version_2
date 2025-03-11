@@ -8,6 +8,7 @@ evitando quedar encerrado y maximizando la eficiencia en la recolección de comi
 
 from heapq import heappush, heappop
 from collections import deque
+from config import BLOCK_SIZE
 
 class AdvancedPathfinding:
     def __init__(self, game):
