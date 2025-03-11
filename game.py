@@ -24,6 +24,7 @@ from enum import Enum
 from collections import namedtuple
 from typing import Optional, Tuple, List
 from config import BLOCK_SIZE, SPEED, BLUE1, BLUE2, RED, WHITE, BLACK
+from advanced_pathfinding import AdvancedPathfinding
 
 pygame.init()
 
@@ -55,6 +56,7 @@ class SnakeGameAI:
         self.display = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Training Snake")
         self.clock = pygame.time.Clock()
+        self.pathfinder = AdvancedPathfinding(self)
 
         # Cargar imagen de manzana
         try:
@@ -416,62 +418,7 @@ class SnakeGameAI:
         return (self.width // BLOCK_SIZE, self.height // BLOCK_SIZE)
 
     def find_path(self):
-        from heapq import heappush, heappop
-
-        class Node:
-            def __init__(self, pos, parent=None):
-                self.pos = pos
-                self.parent = parent
-                self.g = 0
-                self.h = 0
-                self.f = 0
-
-            def __lt__(self, other):
-                return self.f < other.f
-
-        start = self._grid_position(self.head)
-        end = self._grid_position(self.food)
-        grid_w, grid_h = self.grid_size
-
-        open_list = []
-        closed_set = set()
-
-        start_node = Node(start)
-        heappush(open_list, start_node)
-
-        while open_list:
-            current = heappop(open_list)
-
-            if current.pos == end:
-                path = []
-                while current:
-                    path.append(current.pos)
-                    current = current.parent
-                return path[::-1]  # Return reversed path
-
-            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                new_pos = (current.pos[0] + dx, current.pos[1] + dy)
-
-                # Collision check
-                if (
-                    0 <= new_pos[0] < grid_w
-                    and 0 <= new_pos[1] < grid_h
-                    and not any(
-                        p.x // BLOCK_SIZE == new_pos[0]
-                        and p.y // BLOCK_SIZE == new_pos[1]
-                        for p in self.snake[1:]
-                    )
-                ):
-                    new_node = Node(new_pos, current)
-                    new_node.g = current.g + 1
-                    new_node.h = abs(new_pos[0] - end[0]) + abs(new_pos[1] - end[1])
-                    new_node.f = new_node.g + new_node.h
-
-                    if new_node.pos not in closed_set:
-                        heappush(open_list, new_node)
-                        closed_set.add(new_node.pos)
-
-        return []  # No path found
+        return self.pathfinder.find_optimal_path()
 
     def _safe_moves(self, path):
         if len(self.snake) < 15:

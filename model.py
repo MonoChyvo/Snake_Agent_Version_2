@@ -79,7 +79,6 @@ class DQN(nn.Module):
             )
             print(Fore.RED + "-" * 60 + Style.RESET_ALL)
             print("")
-            print("")
         except Exception as e:
             print(Fore.RED + f"Error al guardar el modelo: {e}" + Style.RESET_ALL)
 

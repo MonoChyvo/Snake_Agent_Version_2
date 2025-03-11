@@ -1,3 +1,5 @@
+
+
 import os
 import pandas as pd
 from datetime import datetime
@@ -227,16 +229,18 @@ def create_analysis_plots(df, save_path="plots/analysis"):
 
 
 def update_plots(agent, score, total_score, plot_scores, plot_mean_scores):
-    # Actualiza las listas de puntuaciones pero no muestra el gráfico durante el entrenamiento
+    # Actualiza las listas con el nuevo score
     plot_scores.append(score)
     total_score += score
     mean_score = total_score / agent.n_games
     plot_mean_scores.append(mean_score)
     
-    # Solo guardar el gráfico periódicamente, pero no mostrarlo
-    save_plot = agent.n_games % 100 == 0
-    if save_plot:
-        plt.figure(figsize=(10, 6))  # Create a new figure
+    # Para un plot acumulativo, podrías cargar la data existente del CSV
+    # y combinarla con los datos de la sesión actual si es necesario.
+    
+    # Actualizamos el plot cada 100 juegos, por ejemplo:
+    if agent.n_games % 100 == 0:
+        plt.figure(figsize=(10, 6))
         plt.title("Training Progress")
         plt.xlabel("Number of Games")
         plt.ylabel("Score")
@@ -247,14 +251,14 @@ def update_plots(agent, score, total_score, plot_scores, plot_mean_scores):
         plt.text(len(plot_scores) - 1, plot_scores[-1], str(plot_scores[-1]))
         plt.text(len(plot_mean_scores) - 1, plot_mean_scores[-1], str(plot_mean_scores[-1]))
         
-        # Save plot to file
+        # Guarda el plot en un único archivo que se vaya actualizando
         os.makedirs("plots", exist_ok=True)
-        plt.savefig(f"plots/training_progress_game_{agent.n_games}.png")
-        plt.close()  # Close the figure to free memory
-        
-        print(f"Plot saved at game {agent.n_games}")
+        plt.savefig("plots/training_progress.png")
+        plt.close()  # Cierra la figura para liberar memoria
+        print(f"Plot updated at game {agent.n_games}")
     
     return total_score
+
 
 
 def save_checkpoint(agent, loss, filename="model_MARK_IX.pth"):
@@ -278,9 +282,6 @@ def print_game_info(reward, score, last_record_game, record, recent_scores):
     print(Fore.MAGENTA + f"Score: {score}" + Style.RESET_ALL)
     print(Fore.GREEN + f"Record:  {record}" + Style.RESET_ALL)
     print(Fore.RED + '-'*60 + Style.RESET_ALL)
-    print('')
-    print('')
-    print(Fore.RED + '-'*60 + Style.RESET_ALL)
     
     
 def print_weight_norms(agent):
@@ -294,19 +295,27 @@ def print_weight_norms(agent):
 
 def save_game_results(agent, df_game_results):
     """
-    Guarda los resultados de los juegos en un único archivo CSV centralizado.
-    
-    Args:
-        agent: El agente con los resultados de los juegos
-        df_game_results: DataFrame con los resultados detallados, ya incluye los promedios móviles
+    Guarda los resultados de los juegos en un único archivo CSV centralizado, acumulando los datos.
     """
     # Asegurar que el directorio existe
     os.makedirs("results", exist_ok=True)
+    csv_path = "results/MARK_IX_game_results.csv"
     
-    # Guardar solo un archivo CSV centralizado con el nombre game_results_combined.csv
-    csv_path = "results/df_metrics.csv"
-    df_game_results.to_csv(csv_path, index=False)
+    # Si el archivo ya existe, cargarlo y concatenar los nuevos resultados
+    if os.path.exists(csv_path):
+        try:
+            df_existing = pd.read_csv(csv_path)
+            df_combined = pd.concat([df_existing, df_game_results], ignore_index=True)
+        except Exception as e:
+            print(f"Error al cargar CSV existente: {e}")
+            df_combined = df_game_results
+    else:
+        df_combined = df_game_results
+        
+    # Guardar el CSV con los datos acumulados
+    df_combined.to_csv(csv_path, index=False)
     print(f"Game results saved to {csv_path} (game {agent.n_games})")
+
     
     
 def compute_action_entropy(q_values_history):

@@ -48,6 +48,7 @@ from config import (
 from model import DQN, QTrainer
 from colorama import Fore, Style
 from game import SnakeGameAI, Direction, Point
+from advanced_pathfinding import AdvancedPathfinding
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -337,60 +338,33 @@ class Agent:
         self.trainer.train_step(state, action_idx, reward, next_state, done, weights)
 
     def get_action(self, game, state):
-        # Check if the game reference is set and pathfinding is enabled
-        if (
-            hasattr(self, "game")
-            and hasattr(self, "pathfinding_enabled")
-            and self.pathfinding_enabled
-        ):
-            path = game.find_path()
-            if path:
-                safe_path = game._safe_moves(path)
-                if safe_path:
-                    next_step = safe_path[1] if len(safe_path) > 1 else safe_path[0]
-                    current_head = game._grid_position(game.head)
-                    dx = next_step[0] - current_head[0]
-                    dy = next_step[1] - current_head[1]
-
-                    # Convert grid direction to game direction
-                    target_direction = None
-                    if dx == 1:  # Move right
-                        target_direction = Direction.RIGHT
-                    elif dx == -1:  # Move left
-                        target_direction = Direction.LEFT
-                    elif dy == 1:  # Move down
-                        target_direction = Direction.DOWN
-                    elif dy == -1:  # Move up
-                        target_direction = Direction.UP
-
-                    # Convert target direction to action based on current direction
-                    if target_direction:
-                        directions = [
-                            Direction.RIGHT,
-                            Direction.DOWN,
-                            Direction.LEFT,
-                            Direction.UP,
-                        ]
-                        current_idx = directions.index(game.direction)
-                        target_idx = directions.index(target_direction)
-
-                        # Calculate the turn needed (0 = straight, 1 = right, -1 or 3 = left)
-                        turn = (target_idx - current_idx) % 4
-
-                        if turn == 0:  # No turn needed (straight)
-                            return [1, 0, 0]
-                        elif turn == 1:  # Turn right
-                            return [0, 1, 0]
-                        else:  # Turn left (turn == 3 or turn == -1)
-                            return [0, 0, 1]
-
-        # Fallback to DQN prediction
+        # Intenta encontrar un camino óptimo
+        optimal_path = game.pathfinder.find_optimal_path()
+        if optimal_path:
+            # Verifica si el camino es seguro
+            safe_path = game._safe_moves(optimal_path)
+            if safe_path:
+                # Lógica para decidir la acción basada en el camino óptimo
+                next_pos = safe_path[0]
+                current_pos = game._grid_position(game.head)
+                dx = next_pos[0] - current_pos[0]
+                dy = next_pos[1] - current_pos[1]
+                if dx == 1:
+                    return [0, 1, 0]  # Derecha
+                elif dx == -1:
+                    return [0, 0, 1]  # Izquierda
+                elif dy == 1:
+                    return [1, 0, 0]  # Abajo
+                elif dy == -1:
+                    return [0, 0, 1]  # Arriba
+    
+        # Fallback a la predicción DQN si no se encuentra un camino seguro
         state_tensor = torch.tensor(state, dtype=torch.float)
         q_values = self.model(state_tensor).detach().numpy()
-
+    
         # Improved numerical stability: subtract max value
         exp_q = np.exp((q_values - np.max(q_values)) / self.temperature)
-
+    
         probabilities = exp_q / np.sum(exp_q)
         action = np.random.choice(len(q_values), p=probabilities)
         final_move = [0, 0, 0]
@@ -462,6 +436,7 @@ def train(max_games: int) -> None:
     # Hacer que el agente sea accesible globalmente
     globals()["agent"] = agent
     game = SnakeGameAI()  # Set the game reference
+    pathfinder = AdvancedPathfinding(game)
 
     record = agent.record if hasattr(agent, "record") else 0
     total_score = 0
