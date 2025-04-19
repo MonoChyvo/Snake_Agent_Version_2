@@ -6,7 +6,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from colorama import Fore, Style
 import numpy as np
-from config import ALERT_THRESHOLDS
+from utils.config import ALERT_THRESHOLDS
 
 def plot_training_progress(scores, mean_scores, save_plot=False, save_path="plots", filename="training_progress.png"):
 
