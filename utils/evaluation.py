@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import random
 from src.game import SnakeGameAI, Direction, Point
-from config import MIN_TEMPERATURE
+from utils.config import MIN_TEMPERATURE
 
 def evaluate_agent(agent, num_episodes=10, seed=42):
     """
