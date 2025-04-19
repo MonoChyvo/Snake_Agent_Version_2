@@ -1,23 +1,48 @@
 """
-advanced_pathfinding.py
+Módulo de algoritmos avanzados de búsqueda de caminos para el juego Snake.
 
 Este módulo implementa estrategias avanzadas de búsqueda de caminos para el juego Snake,
 inspiradas en la jugabilidad de humanos profesionales. El objetivo es lograr un juego perfecto
 evitando quedar encerrado y maximizando la eficiencia en la recolección de comida.
+
+Características principales:
+- Algoritmo A* para encontrar el camino más corto hacia la comida
+- Búsqueda de caminos largos para evitar quedar encerrado
+- Análisis dinámico del espacio libre para tomar decisiones estratégicas
+- Detección de situaciones de riesgo y planificación preventiva
+
+Versión: 1.0.0
 """
 
 from heapq import heappush, heappop
 from collections import deque
-from config import BLOCK_SIZE
+from utils.config import BLOCK_SIZE
 
 class AdvancedPathfinding:
+    """
+    Implementa algoritmos avanzados de búsqueda de caminos para el juego Snake.
+    
+    Esta clase proporciona métodos para encontrar caminos óptimos hacia la comida,
+    evitando colisiones y situaciones de encierro. Utiliza diferentes estrategias
+    según el estado actual del juego.
+    """
+    
     def __init__(self, game):
+        """
+        Inicializa el sistema de pathfinding.
+        
+        Args:
+            game: Instancia del juego SnakeGameAI
+        """
         self.game = game
 
     def find_optimal_path(self):
         """
         Decide dinámicamente entre buscar el camino más corto o el más largo
         basado en el estado actual del juego.
+        
+        Returns:
+            list: Lista de posiciones (x, y) que forman el camino óptimo
         """
         if self._should_seek_longest_path():
             return self.find_longest_path()
@@ -27,6 +52,9 @@ class AdvancedPathfinding:
     def find_shortest_path(self):
         """
         Encuentra el camino más corto hacia la comida utilizando el algoritmo A*.
+        
+        Returns:
+            list: Lista de posiciones (x, y) que forman el camino más corto hacia la comida
         """
         start = self.game._grid_position(self.game.head)
         end = self.game._grid_position(self.game.food)
@@ -66,6 +94,9 @@ class AdvancedPathfinding:
     def find_longest_path(self):
         """
         Encuentra el camino más largo posible, evitando quedar encerrado.
+        
+        Returns:
+            list: Lista de posiciones (x, y) que forman el camino más largo seguro
         """
         start = self.game._grid_position(self.game.head)
         grid_w, grid_h = self.game.grid_size
@@ -106,6 +137,9 @@ class AdvancedPathfinding:
         """
         Decide si es mejor buscar el camino más largo basado en el espacio libre
         y el tamaño de la serpiente.
+        
+        Returns:
+            bool: True si se debe buscar el camino más largo, False en caso contrario
         """
         free_space = self._calculate_free_space(self.game._grid_position(self.game.head))
         return free_space < len(self.game.snake) * 2
@@ -113,6 +147,12 @@ class AdvancedPathfinding:
     def _calculate_free_space(self, pos):
         """
         Calcula el espacio libre alrededor de una posición dada.
+        
+        Args:
+            pos: Posición (x, y) en coordenadas de grid
+            
+        Returns:
+            int: Cantidad de celdas libres accesibles desde la posición dada
         """
         queue = deque([pos])
         visited = set()
@@ -135,6 +175,12 @@ class AdvancedPathfinding:
     def _is_position_valid(self, pos):
         """
         Verifica si una posición es válida (dentro del grid y no colisiona con la serpiente).
+        
+        Args:
+            pos: Posición (x, y) en coordenadas de grid
+            
+        Returns:
+            bool: True si la posición es válida, False en caso contrario
         """
         grid_w, grid_h = self.game.grid_size
         return (
@@ -147,6 +193,16 @@ class AdvancedPathfinding:
         )
 
     class Node:
+        """
+        Nodo utilizado en los algoritmos de búsqueda de caminos.
+        
+        Atributos:
+            pos: Posición (x, y) en coordenadas de grid
+            parent: Nodo padre en el camino
+            g: Costo acumulado desde el inicio
+            h: Heurística (estimación del costo hasta el objetivo)
+            f: Costo total (g + h)
+        """
         def __init__(self, pos, parent=None):
             self.pos = pos
             self.parent = parent

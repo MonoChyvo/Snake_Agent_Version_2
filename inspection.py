@@ -1,5 +1,5 @@
-from agent import Agent
-from game import SnakeGameAI
+from src.agent import Agent
+from src.game import SnakeGameAI
 
 agent = Agent()
 game = SnakeGameAI()
@@ -13,8 +13,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Cargar CSV; se ignoran líneas de comentarios iniciadas con '//' 
-df = pd.read_csv(r"c:\Users\chivo\OneDrive\Escritorio\Ciencia De Datos\Reinforcement Learning\snake_0020_DQN\results\df_metrics.csv", comment='/')
+# Cargar CSV; se ignoran líneas de comentarios iniciadas con '//'
+df = pd.read_csv("results/MARK_IX_game_results.csv", comment='/')
 
 # Mostrar estadísticos básicos de algunas columnas clave
 cols = ['loss', 'w1_norm', 'w2_norm', 'w3_norm', 'gradient_norm', 'weight_update_magnitude']

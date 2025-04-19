@@ -1,24 +1,87 @@
-# Ignorar carpetas y archivos compilados de Python
+# Archivos compilados de Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Ignorar entornos virtuales
+# Entornos virtuales
 env/
 venv/
+ENV/
+.env
+.venv
+python-venv/
+pyvenv.cfg
+pip-selfcheck.json
 
-# Ignorar configuraciones locales de VS Code
+# Configuraciones de editores
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
 
-# Ignorar resultados temporales o de análisis
-results/
-plots/
-Snake_RL_TOOD/
-model_Model/
-runs/
-TO_DO.txt
-
-# Ignorar archivos de sistema
+# Archivos de sistema
 .DS_Store
 Thumbs.db
+.directory
+*.lnk
+
+# Archivos específicos del proyecto
+results/
+plots/
+model_Model/
+runs/
+Snake_RL_TOOD/
+TO_DO.txt
 snake_QDL-main.code-workspace
 inspection.py
+
+# Archivos temporales de desarrollo
+*.bak
+*.tmp
+*.swp
+.history/
+
+# Archivos de caché de pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Archivos de distribución
+dist/
+build/
+
+# Archivos de registro y datos
+*.log
+*.csv
+*.dat
+*.out
+*.pid
+*.seed
+
+# Excepciones (archivos que sí queremos incluir a pesar de las reglas anteriores)
+!requirements.txt
+!README.md
+!config.json

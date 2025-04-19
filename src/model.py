@@ -21,6 +21,7 @@ Características:
 import os
 import torch
 import logging
+import numpy as np
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
@@ -57,6 +58,7 @@ class DQN(nn.Module):
         last_record_game=None,
         record=None,
         pathfinding_enabled=True,
+        temperature=None,
     ):
         os.makedirs(folder_path, exist_ok=True)
         checkpoint = {
@@ -67,6 +69,7 @@ class DQN(nn.Module):
             "last_record_game": last_record_game,
             "record": record,
             "pathfinding_enabled": pathfinding_enabled,
+            "temperature": temperature,
         }
         checkpoint_path = os.path.join(folder_path, file_name)
         try:
@@ -103,6 +106,7 @@ class DQN(nn.Module):
                 + f"\nUnified checkpoint: '{file_name}' \nLoaded from: {folder_fullpath}. \nTotal games: {n_games}, \nRecord: {record}, \nPathfinding: {'enabled' if pathfinding_enabled else 'disabled'}"
                 + Style.RESET_ALL
             )
+            temperature = checkpoint.get("temperature", None)
             return (
                 n_games,
                 loss,
@@ -110,13 +114,14 @@ class DQN(nn.Module):
                 last_record_game,
                 record,
                 pathfinding_enabled,
+                temperature,
             )
         except FileNotFoundError:
             logging.error(f"File {file_path} not found.")
-            return None, None, None, None, None, None  # Add one more None
+            return None, None, None, None, None, None, None
         except Exception as e:
             logging.error(f"Error loading unified checkpoint '{file_name}': {e}")
-            return None, None, None, None, None, None
+            return None, None, None, None, None, None, None
 
 
 class QTrainer:
@@ -143,9 +148,11 @@ class QTrainer:
         action = self._prepare_tensor(action, torch.int64)
         reward = self._prepare_tensor(reward, torch.float32)
         done = self._prepare_tensor(done, torch.float32)
-        weights = torch.tensor(weights, dtype=torch.float32).to(
-            device
-        )  # No se aplica unsqueeze a weights
+
+        # Asegurarse de que weights sea un tensor 1D
+        if isinstance(weights, np.ndarray) and weights.ndim > 1:
+            weights = weights.flatten()
+        weights = torch.tensor(weights, dtype=torch.float32).to(device)
 
         # Asegura que action tenga forma [batch, 1]
         if action.dim() == 1:

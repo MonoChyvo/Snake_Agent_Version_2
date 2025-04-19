@@ -19,14 +19,17 @@ import psutil
 import sys
 import gc
 import numpy as np
-from helper import (
+import pygame
+from utils.helper import (
     log_game_results,
     save_checkpoint,
     update_plots,
     print_weight_norms,
     print_game_info,
 )
-from config import (
+from utils.evaluation import evaluate_agent, print_evaluation_results
+from utils.efficient_memory import EfficientPrioritizedReplayMemory
+from utils.config import (
     MAX_MEMORY,
     LR,
     GAMMA,
@@ -44,104 +47,23 @@ from config import (
     MEMORY_PRUNE_FACTOR,
     MEMORY_MONITOR_FREQ,
     MEMORY_PRUNE_THRESHOLD,
+    VISUAL_MODE,
+    SHOW_GRID,
+    SHOW_HEATMAP,
+    PARTICLE_EFFECTS,
+    SHADOW_EFFECTS
 )
-from model import DQN, QTrainer
+from src.model import DQN, QTrainer
 from colorama import Fore, Style
-from game import SnakeGameAI, Direction, Point
-from advanced_pathfinding import AdvancedPathfinding
+from src.game import SnakeGameAI, Direction, Point
+from utils.advanced_pathfinding import AdvancedPathfinding
+from src.start_screen import get_user_config
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class PrioritizedReplayMemory:
-    def __init__(self, capacity):
-        self.capacity = capacity
-        self.memory = []
-        self.priorities = []
-        self.position = 0
-        self.memory_stats = {"max_size_mb": 0, "prune_count": 0, "last_size": 0}
-
-    def push(self, experience):
-        max_priority = max(self.priorities, default=1.0)
-        if len(self.memory) < self.capacity:
-            self.memory.append(experience)
-            self.priorities.append(max_priority)
-        else:
-            self.memory[self.position] = experience
-            self.priorities[self.position] = max_priority
-            self.position = (self.position + 1) % self.capacity
-
-    def sample(self, batch_size):
-        if len(self.memory) == 0:
-            raise ValueError("Memory is empty")
-        if len(self.priorities) != len(self.memory):
-            self.priorities = np.ones(len(self.memory), dtype=np.float32).tolist()
-
-        priorities = np.array(self.priorities, dtype=np.float32)
-        probabilities = priorities / priorities.sum()
-        indices = np.random.choice(len(self.memory), batch_size, p=probabilities)
-        mini_sample = [self.memory[i] for i in indices]
-        weights = probabilities[indices]
-        return mini_sample, indices, weights
-
-    def update_priorities(self, batch_indices, batch_priorities, max_priority=100.0):
-        for idx, priority in zip(batch_indices, batch_priorities):
-            clamped_priority = np.clip(priority, a_min=0, a_max=max_priority)
-            self.priorities[idx] = clamped_priority
-
-    def get_memory_usage(self):
-        """Calculate approximate memory usage of the replay buffer in MB"""
-        if not self.memory:
-            return 0
-
-        # Sample a few experiences to get average size
-        sample_size = min(10, len(self.memory))
-        sample_experiences = self.memory[:sample_size]
-
-        # Calculate size in bytes
-        total_bytes = sum(sys.getsizeof(exp) for exp in sample_experiences)
-        avg_bytes_per_exp = total_bytes / sample_size
-
-        # Estimate total memory usage
-        estimated_total_bytes = avg_bytes_per_exp * len(self.memory)
-        estimated_mb = estimated_total_bytes / (1024 * 1024)
-
-        # Update stats
-        self.memory_stats["last_size"] = int(estimated_mb)
-        self.memory_stats["max_size_mb"] = int(
-            max(self.memory_stats["max_size_mb"], estimated_mb)
-        )
-
-        return estimated_mb
-
-    def prune_memory(self):
-        """Prune memory by keeping only the most important experiences"""
-        if len(self.memory) < 1000:  # Don't prune if too small
-            return
-
-        # Calculate how many experiences to keep
-        keep_count = int(len(self.memory) * MEMORY_PRUNE_FACTOR)
-
-        # Sort indices by priority (highest first)
-        sorted_indices = np.argsort(self.priorities)[::-1]
-        keep_indices = sorted_indices[:keep_count]
-
-        # Keep only the selected experiences and their priorities
-        self.memory = [self.memory[i] for i in keep_indices]
-        self.priorities = [self.priorities[i] for i in keep_indices]
-        self.position = 0  # Reset position
-
-        # Update stats
-        self.memory_stats["prune_count"] += 1
-
-        # Force garbage collection
-        gc.collect()
-
-        print(
-            Fore.YELLOW
-            + f"Memory pruned: kept {keep_count} experiences with highest priorities"
-            + Style.RESET_ALL
-        )
+# La clase PrioritizedReplayMemory ha sido reemplazada por EfficientPrioritizedReplayMemory
+# que se importa desde utils.efficient_memory
 
 
 class Agent:
@@ -150,9 +72,11 @@ class Agent:
         self.last_record_game = 0
         self.game = None
         self.record = 0
-        self.memory = PrioritizedReplayMemory(MAX_MEMORY)
-        self.model = DQN(19, 256, 3).to(device)
-        self.target_model = DQN(19, 256, 3).to(device)
+        # Usar la implementación eficiente de memoria con dimensiones actualizadas
+        self.memory = EfficientPrioritizedReplayMemory(MAX_MEMORY, state_dim=23, action_dim=3)
+        # Dimensión de entrada: 23 (19 originales + 4 nuevas características)
+        self.model = DQN(23, 256, 3).to(device)
+        self.target_model = DQN(23, 256, 3).to(device)
         self.trainer = QTrainer(self.model, self.target_model, lr=LR, gamma=GAMMA)
 
         self.temperature = TEMPERATURE
@@ -166,39 +90,57 @@ class Agent:
         # Lista para mantener los scores recientes para cálculos de mejora
         self.recent_scores = []
 
+        # Intentar cargar el modelo si existe, de lo contrario iniciar con un modelo nuevo
         try:
-            (
-                n_games_loaded,
-                _,
-                optimizer_state_dict,
-                last_recorded_game,
-                record,
-                pathfinding_enabled,
-            ) = self.model.load("model_MARK_IX.pth")
+            # Verificar si el archivo del modelo existe
+            import os
+            model_path = os.path.join("./model_Model", "model_MARK_IX.pth")
+            if os.path.exists(model_path):
+                (
+                    n_games_loaded,
+                    _,
+                    optimizer_state_dict,
+                    last_recorded_game,
+                    record,
+                    pathfinding_enabled,
+                    temperature,
+                ) = self.model.load("model_MARK_IX.pth")
 
-            if n_games_loaded is not None:
-                self.n_games = n_games_loaded
-            if last_recorded_game is not None:
-                self.last_record_game = last_recorded_game
-            if record is not None:
-                self.record = record
-            self.pathfinding_enabled = (
-                pathfinding_enabled if pathfinding_enabled is not None else True
-            )
-            if optimizer_state_dict is not None:
-                try:
-                    self.trainer.optimizer.load_state_dict(optimizer_state_dict)
+                if n_games_loaded is not None:
+                    self.n_games = n_games_loaded
+                if last_recorded_game is not None:
+                    self.last_record_game = last_recorded_game
+                if record is not None:
+                    self.record = record
+                self.pathfinding_enabled = (
+                    pathfinding_enabled if pathfinding_enabled is not None else True
+                )
+                if temperature is not None:
+                    self.temperature = temperature
+                    self.pre_exploration_temp = temperature
                     print(
                         Fore.LIGHTYELLOW_EX
-                        + "Restored optimizer state from checkpoint"
+                        + f"Temperatura restaurada del checkpoint: {self.temperature:.4f}"
                         + Style.RESET_ALL
                     )
-                    print(Fore.RED + "-" * 60 + Style.RESET_ALL)
-                except Exception as e:
-                    print(f"Error restoring optimizer state: {e}")
+                if optimizer_state_dict is not None:
+                    try:
+                        self.trainer.optimizer.load_state_dict(optimizer_state_dict)
+                        print(
+                            Fore.LIGHTYELLOW_EX
+                            + "Restored optimizer state from checkpoint"
+                            + Style.RESET_ALL
+                        )
+                        print(Fore.RED + "-" * 60 + Style.RESET_ALL)
+                    except Exception as e:
+                        print(f"Error restoring optimizer state: {e}")
+            else:
+                print(Fore.YELLOW + "No se encontró un modelo previo. Iniciando entrenamiento desde cero." + Style.RESET_ALL)
+                self.pathfinding_enabled = True
         except Exception as e:
-            print(f"No previous model loaded or error loading model: {e}")
-            # Keep default values initialized above
+            print(f"Error al intentar cargar el modelo: {e}")
+            print(Fore.YELLOW + "Iniciando entrenamiento desde cero." + Style.RESET_ALL)
+            self.pathfinding_enabled = True
 
         self.target_model.load_state_dict(self.model.state_dict())
         self.target_model.eval()
@@ -302,6 +244,34 @@ class Agent:
             if not body_detected:
                 state.append(0)
 
+        # Características adicionales para mejorar la representación del estado
+
+        # 1. Distancia normalizada a la cola
+        tail = game.snake[-1]
+        tail_distance = abs(head.x - tail.x) + abs(head.y - tail.y)
+        max_possible_distance = game.width + game.height
+        normalized_tail_distance = tail_distance / max_possible_distance
+        state.append(normalized_tail_distance)
+
+        # 2. Densidad de la serpiente (qué tan compacta está)
+        snake_length = len(game.snake)
+        grid_area = (game.width // BLOCK_SIZE) * (game.height // BLOCK_SIZE)
+        density = snake_length / grid_area
+        state.append(density)
+
+        # 3. Longitud normalizada de la serpiente
+        max_possible_length = grid_area
+        normalized_length = snake_length / max_possible_length
+        state.append(normalized_length)
+
+        # 4. Espacio libre alrededor de la cabeza (conectividad)
+        free_directions = 0
+        for check_pt in [point_l, point_r, point_u, point_d]:
+            if not game.is_collision(check_pt):
+                free_directions += 1
+        normalized_free_directions = free_directions / 4.0
+        state.append(normalized_free_directions)
+
         return np.array(state, dtype=float)
 
     def remember(self, state, action, reward, next_state, done):
@@ -327,7 +297,8 @@ class Agent:
             states, actions, rewards, next_states, dones, weights
         )
 
-        priorities = np.full(len(indices), loss + 1e-5, dtype=np.float32)
+        # Crear prioridades como una lista de escalares para evitar problemas de dimensionalidad
+        priorities = [loss + 1e-5 for _ in range(len(indices))]
         self.memory.update_priorities(indices, priorities)
 
         return loss  # Return the loss value
@@ -335,47 +306,106 @@ class Agent:
     def train_short_memory(self, state, action, reward, next_state, done):
         action_idx = np.array([np.argmax(action)])
         weights = np.ones((1,), dtype=np.float32)
-        self.trainer.train_step(state, action_idx, reward, next_state, done, weights)
+
+        # Convertir reward a array para consistencia con train_long_memory
+        reward_array = np.array([reward])
+
+        # Normalizar la recompensa si es posible (usando estadísticas recientes)
+        if hasattr(self, 'recent_rewards') and len(self.recent_rewards) > 10:
+            reward_mean = np.mean(self.recent_rewards)
+            reward_std = np.std(self.recent_rewards) + 1e-8
+            reward_array = (reward_array - reward_mean) / reward_std
+
+        # Mantener un historial de recompensas recientes para normalización
+        if not hasattr(self, 'recent_rewards'):
+            self.recent_rewards = []
+        self.recent_rewards.append(reward)
+        if len(self.recent_rewards) > 100:  # Limitar a las 100 recompensas más recientes
+            self.recent_rewards.pop(0)
+
+        self.trainer.train_step(state, action_idx, reward_array[0], next_state, done, weights)
 
     def get_action(self, game, state):
-        # Intenta encontrar un camino óptimo
-        optimal_path = game.pathfinder.find_optimal_path()
-        if optimal_path:
-            # Verifica si el camino es seguro
-            safe_path = game._safe_moves(optimal_path)
-            if safe_path:
-                # Lógica para decidir la acción basada en el camino óptimo
-                next_pos = safe_path[0]
-                current_pos = game._grid_position(game.head)
-                dx = next_pos[0] - current_pos[0]
-                dy = next_pos[1] - current_pos[1]
-                if dx == 1:
-                    return [0, 1, 0]  # Derecha
-                elif dx == -1:
-                    return [0, 0, 1]  # Izquierda
-                elif dy == 1:
-                    return [1, 0, 0]  # Abajo
-                elif dy == -1:
-                    return [0, 0, 1]  # Arriba
-    
-        # Fallback a la predicción DQN si no se encuentra un camino seguro
+        # Intenta encontrar un camino óptimo si el pathfinding está habilitado
+        if hasattr(self, 'pathfinding_enabled') and self.pathfinding_enabled:
+            optimal_path = game.pathfinder.find_optimal_path()
+            if optimal_path:
+                # Verifica si el camino es seguro
+                safe_path = game._safe_moves(optimal_path)
+                if safe_path:
+                    # Lógica para decidir la acción basada en el camino óptimo
+                    next_pos = safe_path[0]
+                    current_pos = game._grid_position(game.head)
+                    dx = next_pos[0] - current_pos[0]
+                    dy = next_pos[1] - current_pos[1]
+                    if dx == 1:
+                        return [0, 1, 0]  # Derecha
+                    elif dx == -1:
+                        return [0, 0, 1]  # Izquierda
+                    elif dy == 1:
+                        return [1, 0, 0]  # Abajo
+                    elif dy == -1:
+                        return [0, 1, 0]  # Arriba
+
+        # Calcular temperatura adaptativa basada en la incertidumbre del modelo
+        adaptive_temp = self.get_adaptive_temperature(state)
+
+        # Fallback a la predicción DQN con temperatura adaptativa
         state_tensor = torch.tensor(state, dtype=torch.float)
         q_values = self.model(state_tensor).detach().numpy()
-    
+
         # Improved numerical stability: subtract max value
-        exp_q = np.exp((q_values - np.max(q_values)) / self.temperature)
-    
+        exp_q = np.exp((q_values - np.max(q_values)) / adaptive_temp)
+
         probabilities = exp_q / np.sum(exp_q)
         action = np.random.choice(len(q_values), p=probabilities)
         final_move = [0, 0, 0]
         final_move[action] = 1
         return final_move
 
+    def get_adaptive_temperature(self, state):
+        """Calcula una temperatura adaptativa basada en la incertidumbre del modelo"""
+        # Si estamos en fase de exploración, usar temperatura de exploración
+        if self.exploration_phase:
+            return self.temperature
+
+        # Calcular incertidumbre basada en la longitud de la serpiente
+        # Serpientes más largas necesitan más exploración para evitar quedarse atrapadas
+        if hasattr(self, 'game') and self.game is not None:
+            snake_length = len(self.game.snake)
+            # Aumentar temperatura para serpientes más largas
+            length_factor = min(snake_length / 20.0, 1.0)  # Normalizar a máximo 1.0
+            base_temp = self.temperature
+            # Aumentar temperatura hasta un 50% para serpientes largas
+            adaptive_temp = base_temp * (1.0 + 0.5 * length_factor)
+
+            # Limitar el rango de temperatura
+            # Asegurarse de que adaptive_temp sea un escalar
+            adaptive_temp_scalar = float(adaptive_temp)
+            return max(min(adaptive_temp_scalar, 1.0), MIN_TEMPERATURE)
+
+        # Si no podemos calcular basado en longitud, usar temperatura estándar
+        return self.temperature
+
     def update_target_network(self):
         for target_param, param in zip(
             self.target_model.parameters(), self.model.parameters()
         ):
             target_param.data.copy_(TAU * param.data + (1.0 - TAU) * target_param.data)
+
+    def adjust_learning_rate(self, initial_lr=LR, min_lr=0.00001):
+        """Ajusta la tasa de aprendizaje basada en el progreso del entrenamiento"""
+        # Calcular factor de decaimiento basado en el número de juegos
+        decay_factor = 0.9999
+
+        # Calcular nueva tasa de aprendizaje
+        new_lr = max(initial_lr * (decay_factor ** self.n_games), min_lr)
+
+        # Aplicar nueva tasa de aprendizaje al optimizador
+        for param_group in self.trainer.optimizer.param_groups:
+            param_group['lr'] = new_lr
+
+        return new_lr
 
     def update_temperature(
         self,
@@ -419,7 +449,15 @@ class Agent:
 
         # Ajuste de temperatura fuera de fase de exploración
         if not self.exploration_phase:
+            old_temp = self.temperature
             self.temperature = max(self.temperature * decay_rate, min_temperature)
+            # Mostrar cambio de temperatura solo si es significativo
+            if abs(old_temp - self.temperature) > 0.001:
+                print(
+                    Fore.CYAN
+                    + f"Temperatura actualizada: {old_temp:.4f} -> {self.temperature:.4f}"
+                    + Style.RESET_ALL
+                )
 
     def set_pathfinding(self, enabled=True):
         """Activa o desactiva el pathfinding para la selección de acciones"""
@@ -432,11 +470,26 @@ class Agent:
 
 
 def train(max_games: int) -> None:
+    # Inicializar pygame si no está inicializado
+    if not pygame.get_init():
+        pygame.init()
+
+    # Mostrar pantalla de inicio para seleccionar configuración visual
+    visual_config = get_user_config()
+    print(Fore.GREEN + "Configuración visual seleccionada:" + Style.RESET_ALL)
+    for key, value in visual_config.items():
+        print(f"  {key}: {value}")
+
     agent = Agent()
     # Hacer que el agente sea accesible globalmente
     globals()["agent"] = agent
-    game = SnakeGameAI()  # Set the game reference
+
+    # Crear el juego con la configuración visual seleccionada
+    game = SnakeGameAI(visual_config=visual_config)  # Set the game reference
     pathfinder = AdvancedPathfinding(game)
+
+    # Establecer la referencia al juego en el agente para cálculos adaptativos
+    agent.game = game
 
     record = agent.record if hasattr(agent, "record") else 0
     total_score = 0
@@ -493,6 +546,10 @@ def train(max_games: int) -> None:
                 exploration_frequency,
                 exploration_duration,
             )
+
+            # Ajustar tasa de aprendizaje dinámicamente
+            current_lr = agent.adjust_learning_rate()
+            print(Fore.CYAN + f"Learning rate ajustada a: {current_lr:.6f}" + Style.RESET_ALL)
 
             # Actualizar contador de juegos y resetear el juego
             agent.n_games += 1
@@ -559,9 +616,32 @@ def train(max_games: int) -> None:
                 agent.recent_scores,
             )
 
+            # Evaluación periódica cada 100 juegos
+            if agent.n_games % 100 == 0:
+                print(Fore.LIGHTMAGENTA_EX + "\nRealizando evaluación periódica..." + Style.RESET_ALL)
+                eval_results = evaluate_agent(agent, num_episodes=5)
+                print_evaluation_results(eval_results)
+
+                # Guardar resultados de evaluación
+                if hasattr(agent, 'evaluation_results'):
+                    agent.evaluation_results.append({
+                        'game': agent.n_games,
+                        **eval_results
+                    })
+                else:
+                    agent.evaluation_results = [{
+                        'game': agent.n_games,
+                        **eval_results
+                    }]
+
             # Terminate training if max_games reached
             if agent.n_games >= max_games:
                 print(Fore.GREEN + "            Training complete." + Style.RESET_ALL)
+
+                # Evaluación final
+                print(Fore.LIGHTMAGENTA_EX + "\nRealizando evaluación final..." + Style.RESET_ALL)
+                final_eval = evaluate_agent(agent, num_episodes=10)
+                print_evaluation_results(final_eval)
                 break
 
 
