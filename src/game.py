@@ -23,7 +23,7 @@ import numpy as np
 from enum import Enum
 from collections import namedtuple
 from typing import Optional, Tuple, List, Dict, Any
-from config import (
+from utils.config import (
     BLOCK_SIZE, SPEED, BLUE1, BLUE2, RED, WHITE, BLACK, GREEN, YELLOW, GRAY, PURPLE,
     VISUAL_MODE, SHOW_GRID, SHOW_HEATMAP, PARTICLE_EFFECTS, SHADOW_EFFECTS, ANIMATION_SPEED,
     HEATMAP_OPACITY, STADIUM_MARGIN_TOP, STADIUM_MARGIN_SIDE, STADIUM_MARGIN_BOTTOM
