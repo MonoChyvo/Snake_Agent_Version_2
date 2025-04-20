@@ -15,6 +15,7 @@ Este proyecto implementa el clásico juego de Snake utilizando Deep Q-Learning (
 - **Sistema de Pathfinding**: Algoritmos A\* y búsqueda de caminos largos para evitar situaciones de bloqueo.
 - **Análisis Detallado**: Seguimiento y visualización de métricas de entrenamiento.
 - **Configuración Persistente**: Guarda tus preferencias visuales entre sesiones.
+- **Seguridad Mejorada**: Validación robusta de datos y manejo avanzado de excepciones.
 
 ## 💻 Requisitos Técnicos
 
@@ -151,7 +152,8 @@ snake_dqn/
 │   ├── config_manager.py        # Gestión de configuración
 │   ├── efficient_memory.py      # Gestión optimizada de memoria
 │   ├── evaluation.py            # Herramientas de evaluación
-│   └── helper.py                # Funciones auxiliares
+│   ├── helper.py                # Funciones auxiliares
+│   └── validation.py            # Validación de datos y seguridad
 ├── clean.py           # Script para limpiar archivos temporales
 ├── inspection.py       # Herramientas de inspección y análisis
 ├── main.py            # Punto de entrada principal
@@ -205,6 +207,8 @@ Para más detalles sobre la arquitectura y el diseño del sistema, consulta los 
 
 - [Arquitectura del Sistema](docs/architecture.md)
 - [Manual de Usuario](docs/user_manual.md)
+- [Mejoras de Seguridad](docs/security_improvements.md)
+- [Implementación de Seguridad](docs/security_implementation.md)
 
 ## 💬 Contribuciones
 
@@ -215,6 +219,18 @@ Las contribuciones son bienvenidas. Si deseas contribuir:
 3. Realiza tus cambios y haz commit (`git commit -m 'Añadir nueva funcionalidad'`)
 4. Sube los cambios a tu fork (`git push origin feature/nueva-funcionalidad`)
 5. Abre un Pull Request
+
+## 🔐 Seguridad
+
+El proyecto implementa varias capas de seguridad para garantizar la robustez y estabilidad:
+
+- **Validación de Entrada**: Verificación exhaustiva de todos los datos externos.
+- **Manejo de Excepciones**: Recuperación elegante de errores en áreas críticas.
+- **Registro de Seguridad**: Seguimiento detallado de eventos y errores.
+- **Validación de Recursos**: Verificación de integridad de archivos cargados.
+- **Protección contra Datos Malformados**: Prevención de fallos por datos corruptos.
+
+Para más detalles, consulta la [documentación de seguridad](docs/security_implementation.md).
 
 ## 🔒 Licencia
 
