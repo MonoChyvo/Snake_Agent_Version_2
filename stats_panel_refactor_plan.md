@@ -1,16 +1,5 @@
 # Plan de Refactorización del Panel de Estadísticas
 
-## 1. Redundancia en la Actualización de Datos
-**Problema:**  
-Los datos del panel se actualizan en múltiples puntos del ciclo de vida del juego, lo que puede causar inconsistencias y dificultad para mantener el código.
-
-**Solución Propuesta:**  
-- Centralizar la lógica de actualización en un único método (por ejemplo, `StatsManager.update()`).
-- Utilizar el sistema de eventos para disparar actualizaciones solo cuando los datos relevantes cambien.
-- El panel solo se actualizará cuando reciba una notificación de cambio.
-
----
-
 ## 2. Manejo de Errores Silenciosos
 **Problema:**  
 Muchos errores se ignoran silenciosamente, lo que dificulta la detección y solución de problemas.

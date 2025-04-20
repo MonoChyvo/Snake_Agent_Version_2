@@ -404,6 +404,9 @@ class Agent:
         # También notificar a través del sistema de eventos para compatibilidad
         event_system.notify("model_params_updated", model_params)
 
+        # LOG: métricas clave del agente
+        print(f"[AGENT] n_games={self.n_games} | last_record_game={self.last_record_game} | last_loss={getattr(self, 'last_loss', None)} | temperature={getattr(self, 'temperature', None)} | learning_rate={getattr(self, 'learning_rate', None)} | pathfinding_enabled={getattr(self, 'pathfinding_enabled', None)} | mode={getattr(self, 'mode', None)}")
+
     def get_action(self, game, state):
         # Intenta encontrar un camino óptimo si el pathfinding está habilitado
         if hasattr(self, 'pathfinding_enabled') and self.pathfinding_enabled:
@@ -602,12 +605,10 @@ def train(max_games: int) -> None:
     # Hacer que el agente sea accesible globalmente
     globals()["agent"] = agent
 
-    # Crear el juego con la configuración visual seleccionada
-    game = SnakeGameAI(visual_config=visual_config)  # Set the game reference
+    # Crear el juego con la configuración visual seleccionada y pasar el agente correctamente
+    game = SnakeGameAI(visual_config=visual_config, agent=agent)
+    agent.game = game  # Sincronizar referencia inversa si es necesario
     pathfinder = AdvancedPathfinding(game)
-
-    # Establecer la referencia al juego en el agente para cálculos adaptativos
-    agent.game = game
 
     record = agent.record if hasattr(agent, "record") else 0
     total_score = 0
@@ -777,6 +778,15 @@ def train(max_games: int) -> None:
             summary = update_game_summary(game=game, agent=agent, force_update=True)
             if summary:
                 event_system.notify("game_summary_updated", summary)
+
+            # --- Cálculo de métricas de eficiencia ---
+            # Ratio de eficiencia: posiciones únicas visitadas / longitud de la serpiente
+            efficiency_ratio = len(set((p.x, p.y) for p in game.snake)) / len(game.snake) if len(game.snake) > 0 else 0
+            # Pasos por comida: pasos totales / comida obtenida
+            steps_per_food = game.steps / game.score if game.score > 0 else game.steps
+            # Guardar en el agente para que StatsManager lo recoja
+            agent.efficiency_ratio = efficiency_ratio
+            agent.steps_per_food = steps_per_food
 
             # Evaluación periódica cada 100 juegos
             if agent.n_games % 100 == 0:

@@ -29,7 +29,9 @@ from utils.config import (
     HEATMAP_OPACITY, STADIUM_MARGIN_TOP, STADIUM_MARGIN_SIDE, STADIUM_MARGIN_BOTTOM
 )
 from utils.advanced_pathfinding import AdvancedPathfinding
+from src.stats_manager import StatsManager
 import time
+from utils.helper import event_system
 
 pygame.init()
 
@@ -53,7 +55,9 @@ Point = namedtuple("Point", "x, y")
 class SnakeGameAI:
     def __init__(
         self, width: int = 1300, height: int = 750, n_game: int = 0, record: int = 0,
-        visual_config: Optional[Dict[str, Any]] = None
+        visual_config: Optional[Dict[str, Any]] = None,
+        agent=None,
+        event_system_instance=None
     ) -> None:
         # Definir el ancho del panel lateral de estadísticas
         self.stats_panel_width = 450
@@ -79,15 +83,19 @@ class SnakeGameAI:
         self.margin_bottom = STADIUM_MARGIN_BOTTOM
 
         # Configuración visual
-        self.visual_config = visual_config or {
-            "visual_mode": VISUAL_MODE,
-            "show_grid": SHOW_GRID,
-            "show_heatmap": SHOW_HEATMAP,
-            "particle_effects": PARTICLE_EFFECTS,
-            "shadow_effects": SHADOW_EFFECTS,
-            "show_stats_panel": True,  # Mostrar panel de estadísticas por defecto
-            "selected_stats": ["basic", "training", "efficiency", "actions", "model"]  # Mostrar todas las categorías
-        }
+        # Si no se proporciona visual_config, usar configuración por defecto
+        if visual_config is None:
+            self.visual_config = {
+                "visual_mode": VISUAL_MODE,
+                "show_grid": SHOW_GRID,
+                "show_heatmap": SHOW_HEATMAP,
+                "particle_effects": PARTICLE_EFFECTS,
+                "shadow_effects": SHADOW_EFFECTS,
+                "show_stats_panel": True,
+                "selected_stats": ["basic", "training", "efficiency", "actions", "model"]
+            }
+        else:
+            self.visual_config = visual_config
 
         # Cargar fuentes
         try:
@@ -123,50 +131,103 @@ class SnakeGameAI:
         self.game_duration = 0
         self.avg_open_space_ratio = 0
 
-        # Inicializar diccionario para almacenar estadísticas en tiempo real
-        self.stats = {
-            "basic": {},
-            "training": {
-                # Inicializar el valor del último récord con 0
-                # Se actualizará correctamente en el primer frame
-                "Último récord (juego)": 0
-            },
-            "efficiency": {},
-            "actions": {},
-            "model": {
-                "Temperatura": 0.99,
-                "Learning rate": 0.001,
-                "Pathfinding": "Activado",
-                "Modo de explotación": "Pathfinding habilitado"
-            }
-        }
+        # Instancia de StatsManager
+        if event_system_instance is None:
+            event_system_instance = event_system
+        self.event_system = event_system_instance
+        self.stats_manager = StatsManager(self.event_system, self, agent)
 
-        # Intentar obtener los parámetros del modelo desde shared_data
+        # Inicializar variables de juego
+        self.score: int = 0
+        self.food: Optional[Point] = None
+        self.frame_iteration: int = 0
+        # Inicializar la serpiente antes de cualquier uso
+        self.snake = [Point(self.grid_width_blocks // 2 * BLOCK_SIZE, self.grid_height_blocks // 2 * BLOCK_SIZE)]
+        self.head = self.snake[0]
+        self.direction = Direction.RIGHT
+
+        # Reiniciar variables de seguimiento
+        self.reward_history = []
+        self.action_history = []
+        self.steps = 0
+        self.food_distances = []
+        self.decision_times = []
+        self.game_duration = 0
+
+        # Reiniciar mapa de visitas con tamaño correcto
+        grid_width, grid_height = self.grid_size
+        self.visit_map = np.zeros((grid_width, grid_height))
+
+        # Inicializar lista de partículas para efectos visuales
+        self.particles = []
+
+        # Restaurar configuración visual y dimensiones de la ventana
+        self.visual_config = visual_config
+        self.width = width
+        self.height = height
+
+        # Asegurar que la pantalla mantenga el tamaño correcto
+        self.display = pygame.display.set_mode((self.width, self.height))
+
+        # Colocar comida inicial
+        self._place_food()
+
+        # Marcar la posición inicial de la serpiente en el mapa de visitas
+        for segment in self.snake:
+            grid_x, grid_y = self._grid_position(segment)
+            if 0 <= grid_x < grid_width and 0 <= grid_y < grid_height:
+                self.visit_map[grid_x, grid_y] = 1
+
+        # Imprimir información de inicialización
+        print(f"Juego inicializado: Serpiente en dirección {self.direction.name}, "
+              f"Tamaño del grid: {grid_width}x{grid_height}")
+
+        # Actualizar el resumen del juego al reiniciar
         try:
+            from utils.helper import update_game_summary
             from src.shared_data import get_model_params
+
+            # Obtener los parámetros del modelo
             model_params = get_model_params()
+
+            # Inicializar la categoría "model" con los parámetros obtenidos
             if model_params:
-                self.stats["model"] = {
+                model_stats = {
                     "Temperatura": model_params.get("temperature", 0.99),
                     "Learning rate": model_params.get("learning_rate", 0.001),
                     "Pathfinding": "Activado" if model_params.get("pathfinding_enabled", True) else "Desactivado",
                     "Modo de explotación": model_params.get("mode", "Pathfinding habilitado")
                 }
-        except Exception as e:
-            print(f"[INIT] Error al inicializar categoría 'model': {e}")
+                self.stats_manager.update()
 
-        # Inicializar colores para las categorías de estadísticas
-        self.stats_colors = {
-            "basic": (180, 220, 255),     # Azul claro
-            "training": (255, 220, 100),  # Amarillo
-            "efficiency": (100, 255, 150), # Verde claro
-            "actions": (255, 150, 150),   # Rojo claro
-            "model": (200, 150, 255),     # Púrpura claro
-            "weight_norms": (150, 200, 255),  # Azul medio
-            "summary": (255, 180, 180)    # Rosa claro
-        }
+            # Actualizar el resumen del juego
+            agent = globals()["agent"] if "agent" in globals() else None
+            if agent:
+                # Actualizar estadísticas de entrenamiento con el último récord
+                if "training" not in self.stats_manager.get_stats():
+                    self.stats_manager.update()
+                # Usar nuestro método dedicado para obtener el valor más actualizado
+                last_record = self.stats_manager.get_last_record_game()
+                self.stats_manager.update()
+                # Comentado para no saturar la consola
+                # print(f"[DEBUG] reset: Último récord = {last_record}")
 
-        self.reset()
+                # Forzar una actualización del resumen del juego
+                summary = update_game_summary(game=self, agent=agent, force_update=True)
+                if summary:
+                    # Notificar a través del sistema de eventos
+                    self.event_system.notify("game_summary_updated", summary)
+        except Exception:
+            # Ignorar errores silenciosamente para no saturar la consola
+            pass
+
+        # Lógica reactiva para el panel de estadísticas
+        self.stats_panel_needs_update = True
+        self.event_system.register_listener("stats_updated", self.on_stats_updated)
+
+    def on_stats_updated(self, data):
+        """Marca que el panel de estadísticas debe actualizarse tras un cambio."""
+        self.stats_panel_needs_update = True
 
     def reset(self):
         """Reinicia el estado del juego manteniendo la configuración visual.
@@ -312,9 +373,15 @@ class SnakeGameAI:
         print(f"Juego inicializado: Serpiente en dirección {self.direction.name}, "
               f"Tamaño del grid: {grid_width}x{grid_height}")
 
+        # Notificar que se debe actualizar el panel de estadísticas tras reinicio
+        self.event_system.notify("stats_update_needed", {
+            "score": self.score,
+            "record": self.record
+        })
+
         # Actualizar el resumen del juego al reiniciar
         try:
-            from utils.helper import update_game_summary, event_system
+            from utils.helper import update_game_summary
             from src.shared_data import get_model_params
 
             # Obtener los parámetros del modelo
@@ -328,17 +395,17 @@ class SnakeGameAI:
                     "Pathfinding": "Activado" if model_params.get("pathfinding_enabled", True) else "Desactivado",
                     "Modo de explotación": model_params.get("mode", "Pathfinding habilitado")
                 }
-                self.stats["model"] = model_stats
+                self.stats_manager.update()
 
             # Actualizar el resumen del juego
             agent = globals()["agent"] if "agent" in globals() else None
             if agent:
                 # Actualizar estadísticas de entrenamiento con el último récord
-                if "training" not in self.stats:
-                    self.stats["training"] = {}
+                if "training" not in self.stats_manager.get_stats():
+                    self.stats_manager.update()
                 # Usar nuestro método dedicado para obtener el valor más actualizado
-                last_record = self._get_last_record_game()
-                self.stats["training"]["Último récord (juego)"] = last_record
+                last_record = self.stats_manager.get_last_record_game()
+                self.stats_manager.update()
                 # Comentado para no saturar la consola
                 # print(f"[DEBUG] reset: Último récord = {last_record}")
 
@@ -346,7 +413,7 @@ class SnakeGameAI:
                 summary = update_game_summary(game=self, agent=agent, force_update=True)
                 if summary:
                     # Notificar a través del sistema de eventos
-                    event_system.notify("game_summary_updated", summary)
+                    self.event_system.notify("game_summary_updated", summary)
         except Exception:
             # Ignorar errores silenciosamente para no saturar la consola
             pass
@@ -370,9 +437,9 @@ class SnakeGameAI:
 
         # IMPORTANTE: Actualizar el valor del último récord en cada paso
         # Esto garantiza que siempre tengamos el valor más actualizado
-        if "training" in self.stats:
-            last_record = self._get_last_record_game()
-            self.stats["training"]["Último récord (juego)"] = last_record
+        if "training" in self.stats_manager.get_stats():
+            last_record = self.stats_manager.get_last_record_game()
+            self.stats_manager.update()
             # Comentado para no saturar la consola
             # if self.steps % 100 == 0:
             #     print(f"[DEBUG] play_step: Último récord = {last_record}")
@@ -523,6 +590,23 @@ class SnakeGameAI:
             self.reward_history.append(reward)
             self.snake.pop()
 
+        # Detectar si la puntuación o el récord han cambiado y notificar
+        score_changed = False
+        record_changed = False
+        prev_score = getattr(self, '_prev_score', None)
+        prev_record = getattr(self, '_prev_record', None)
+        if prev_score is None or self.score != prev_score:
+            score_changed = True
+            self._prev_score = self.score
+        if prev_record is None or self.record != prev_record:
+            record_changed = True
+            self._prev_record = self.record
+        if score_changed or record_changed:
+            self.event_system.notify("stats_update_needed", {
+                "score": self.score,
+                "record": self.record
+            })
+
         # Mantener la funcionalidad de cálculo de normas de pesos para otros componentes
         # pero sin mostrarlas en el panel
         try:
@@ -534,7 +618,7 @@ class SnakeGameAI:
                 print_weight_norms(agent)
 
                 # Actualizar las estadísticas (sin normas de pesos)
-                self._update_stats()
+                self.stats_manager.update()
         except Exception:
             # Ignorar errores silenciosamente para no saturar la consola
             pass
@@ -679,15 +763,11 @@ class SnakeGameAI:
 
     def _update_ui(self):
         """Actualiza la interfaz gráfica según el modo de visualización seleccionado."""
-        # IMPORTANTE: Actualizar el valor del último récord en cada frame
-        # Esto garantiza que siempre tengamos el valor más actualizado
-        if "training" in self.stats:
-            last_record = self._get_last_record_game()
-            self.stats["training"]["Último récord (juego)"] = last_record
-            # Comentado para no saturar la consola
-            # if self.frame_iteration % 100 == 0:
-            #     print(f"[DEBUG] _update_ui: Último récord = {last_record}")
-
+        # Solo actualizar estadísticas si el panel realmente necesita refresco
+        if self.stats_panel_needs_update or self.stats_manager.is_dirty():
+            self.stats_manager.update()
+            self.stats_manager.clean()
+            self.stats_panel_needs_update = False
         # Llenar toda la pantalla con un color de fondo oscuro
         self.display.fill((20, 20, 30))
 
@@ -702,8 +782,6 @@ class SnakeGameAI:
 
         # Dibujar un borde para el estadio
         pygame.draw.rect(self.display, (100, 100, 120), game_area, 3)
-
-        # Se ha eliminado la actualización del resumen del juego como solicitado
 
         # Dibujar cuadrícula si está habilitada
         if self.visual_config["show_grid"]:
@@ -722,9 +800,65 @@ class SnakeGameAI:
         # Renderizar información de juego (común para ambos modos)
         self._render_game_info()
 
-        # Renderizar panel de estadísticas si está habilitado
+        # Renderizar panel de estadísticas solo si hay cambios
         if self.visual_config.get("show_stats_panel", True):
-            self._render_stats_panel()
+            # Definir panel_rect ANTES de usarlo
+            panel_x = self.margin_side + self.grid_width_blocks * BLOCK_SIZE + 20
+            panel_y = self.margin_top
+            panel_width = self.stats_panel_width - 30
+            panel_height = self.grid_height_blocks * BLOCK_SIZE
+            panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+            # Lista de categorías a mostrar (sin 'actions')
+            categories = ["basic", "training", "efficiency", "model"]
+            # Obtener datos centralizados del StatsManager
+            stats = self.stats_manager.get_stats()
+            # Colores mejorados para una visualización más agradable y profesional
+            bg_color = (24, 26, 38)  # Fondo más oscuro y elegante
+            border_color = (60, 120, 180)  # Borde azul sobrio
+            title_color = (210, 225, 255)  # Títulos suaves
+            line_color = (60, 80, 110)  # Líneas divisorias discretas
+            label_color = (180, 200, 230)  # Etiquetas
+            value_color = (90, 200, 255)  # Valores numéricos
+            highlight_color = (255, 195, 90)  # Para récords y modo
+            warning_color = (255, 110, 110)  # Para valores críticos
+
+            # Panel de fondo y borde
+            pygame.draw.rect(self.display, bg_color, panel_rect, border_radius=12)
+            pygame.draw.rect(self.display, border_color, panel_rect, 2, border_radius=12)
+            y_offset = panel_y + 15
+            padding = 15
+            for category in categories:
+                category_title = self._get_category_title(category)
+                cat_title = self.stats_title_font.render(category_title, True, title_color)
+                self.display.blit(cat_title, (panel_x + padding, y_offset))
+                y_offset += 25
+                pygame.draw.line(self.display, line_color,
+                                 (panel_x + padding, y_offset),
+                                 (panel_x + panel_width - padding, y_offset), 1)
+                y_offset += 10
+                if category in stats:
+                    for k, v in stats[category].items():
+                        # Selección de color según tipo de dato
+                        if k in ["Récord", "Último récord (juego)", "Modo de explotación"]:
+                            color = highlight_color
+                        elif k in ["Pathfinding"]:
+                            color = (120, 255, 170) if v == "Activado" else warning_color
+                        elif k in ["Pérdida"] and isinstance(v, float) and v > 3.0:
+                            color = warning_color
+                        elif isinstance(v, float):
+                            color = value_color
+                        else:
+                            color = label_color
+                        if isinstance(v, float):
+                            value_str = f"{v:.4f}" if abs(v) < 100 else f"{v:.2f}"
+                        else:
+                            value_str = str(v)
+                        text = self.stats_font.render(f"{k}: ", True, label_color)
+                        val = self.stats_font.render(value_str, True, color)
+                        self.display.blit(text, (panel_x + padding, y_offset))
+                        self.display.blit(val, (panel_x + padding + text.get_width() + 2, y_offset))
+                        y_offset += 18
+                y_offset += 10
 
         pygame.display.flip()
 
@@ -1082,6 +1216,78 @@ class SnakeGameAI:
         # El código para mostrar el estado de pathfinding y modo visual
         # ahora está integrado en la sección anterior
 
+    def _get_category_title(self, category):
+        """Devuelve el título formateado para una categoría de estadísticas."""
+        titles = {
+            "basic": "Estadísticas Básicas",
+            "training": "Entrenamiento",
+            "efficiency": "Eficiencia",
+            "actions": "Distribución de Acciones",
+            "model": "Parámetros del Modelo"
+        }
+        return titles.get(category, category.capitalize())
+
+    def _get_last_record_game(self):
+        """Obtiene el valor de last_record_game directamente del agente.
+        Este método garantiza que siempre obtendremos el valor más actualizado.
+
+        Returns:
+            int: El número del juego donde se obtuvo el último récord.
+        """
+        # Importar el sistema de registro de errores
+        from utils.error_logger import stats_panel_logger, log_error, log_warning, log_info
+
+        try:
+            # Intentar obtener el agente global
+            agent = globals().get("agent", None)
+            if agent is None:
+                log_warning(stats_panel_logger, "LastRecord", "No se pudo obtener el agente global")
+            elif not hasattr(agent, "last_record_game"):
+                log_warning(stats_panel_logger, "LastRecord", "El agente no tiene el atributo 'last_record_game'")
+            else:
+                # Agente válido con el atributo necesario
+                last_record = agent.last_record_game
+                log_info(stats_panel_logger, "LastRecord", f"Obtenido último récord del agente: {last_record}")
+                return last_record
+
+            # Si no se puede obtener del agente, intentar obtenerlo de shared_data
+            from utils.helper import latest_game_summary
+            if "Último récord obtenido en partida" in latest_game_summary:
+                last_record = latest_game_summary["Último récord obtenido en partida"]
+                log_info(stats_panel_logger, "LastRecord", f"Obtenido último récord de latest_game_summary: {last_record}")
+                return last_record
+            else:
+                log_warning(stats_panel_logger, "LastRecord", "No se encontró el último récord en latest_game_summary")
+
+        except Exception as e:
+            # Registrar el error con detalles
+            log_error(
+                stats_panel_logger,
+                "LastRecord",
+                "Error al obtener último récord",
+                exception=e,
+                context={
+                    "agent_exists": "agent" in globals(),
+                    "latest_game_summary_keys": str(list(latest_game_summary.keys())) if 'latest_game_summary' in locals() else "No disponible"
+                }
+            )
+
+        # Si no se pudo obtener de ninguna fuente, devolver 0
+        return 0
+
+    def toggle_stats_panel(self):
+        """Alterna la visibilidad del panel de estadísticas."""
+        # Simplemente alternar entre mostrar y ocultar el panel
+        self.visual_config["show_stats_panel"] = not self.visual_config.get("show_stats_panel", True)
+
+        status = "activado" if self.visual_config["show_stats_panel"] else "desactivado"
+        print(f"Panel de estadísticas {status}")
+
+    def update_visual_config(self, config):
+        """Actualiza la configuración visual con nuevos valores."""
+        if config:
+            self.visual_config.update(config)
+
     def _move(self, action: List[int]) -> None:
         """
         Mueve la serpiente según la acción dada.
@@ -1198,403 +1404,6 @@ class SnakeGameAI:
 
             # Aplicar la superficie de advertencia a la pantalla principal
             self.display.blit(warning_surface, (0, 0))
-
-    def toggle_visual_mode(self):
-        """Cambia entre los modos de visualización animado y simple."""
-        if self.visual_config["visual_mode"] == "animated":
-            self.visual_config["visual_mode"] = "simple"
-        else:
-            self.visual_config["visual_mode"] = "animated"
-
-        # Mostrar mensaje de cambio de modo
-        print(f"Modo visual cambiado a: {self.visual_config['visual_mode']}")
-
-    def toggle_stats_panel(self):
-        """Alterna la visibilidad del panel de estadísticas."""
-        # Simplemente alternar entre mostrar y ocultar el panel
-        self.visual_config["show_stats_panel"] = not self.visual_config.get("show_stats_panel", True)
-
-        status = "activado" if self.visual_config["show_stats_panel"] else "desactivado"
-        print(f"Panel de estadísticas {status}")
-
-    def update_visual_config(self, config):
-        """Actualiza la configuración visual con nuevos valores."""
-        if config:
-            self.visual_config.update(config)
-
-    def _render_stats_panel(self):
-        """Renderiza el panel lateral de estadísticas en tiempo real."""
-        # IMPORTANTE: Actualizar el valor del último récord justo antes de renderizar
-        # Esto garantiza que siempre tengamos el valor más actualizado
-        if "training" in self.stats:
-            self.stats["training"]["Último récord (juego)"] = self._get_last_record_game()
-
-        # Definir la posición y tamaño del panel
-        panel_x = self.margin_side + self.grid_width_blocks * BLOCK_SIZE + 20
-        panel_y = self.margin_top
-        panel_width = self.stats_panel_width - 30
-        panel_height = self.grid_height_blocks * BLOCK_SIZE
-
-        # Dibujar el fondo del panel
-        panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
-        pygame.draw.rect(self.display, (30, 30, 40), panel_rect)
-        pygame.draw.rect(self.display, (70, 70, 90), panel_rect, 2, border_radius=5)
-
-        # Dibujar título del panel con separador
-        title = self.stats_title_font.render("SNAKE DQN - ENTRENAMIENTO", True, WHITE)
-        title_rect = title.get_rect(center=(panel_x + panel_width // 2, panel_y + 20))
-        self.display.blit(title, title_rect)
-
-        # Dibujar separador bajo el título
-        pygame.draw.line(self.display, (100, 100, 150),
-                       (panel_x + 10, panel_y + 40),
-                       (panel_x + panel_width - 10, panel_y + 40), 2)
-
-        # Forzar una actualización de las estadísticas justo antes de renderizar
-        # Esto asegura que tengamos los datos más recientes
-        self._update_stats()
-
-        # Verificar que tenemos datos en la categoría "model"
-        if "model" not in self.stats or not self.stats["model"]:
-            # Si no hay datos, crear valores por defecto
-            self.stats["model"] = {
-                "Temperatura": 0.99,
-                "Learning rate": 0.001,
-                "Pathfinding": "Activado",
-                "Modo de explotación": "Pathfinding habilitado"
-            }
-
-        # Verificar que tenemos datos en la categoría "training"
-        if "training" not in self.stats or not self.stats["training"]:
-            # Si no hay datos, crear valores por defecto
-            self.stats["training"] = {
-                "Recompensa media": 0.0,
-                "Último récord (juego)": 0
-            }
-
-            # Intentar obtener el último récord del agente
-            agent = globals()["agent"] if "agent" in globals() else None
-            if agent and hasattr(agent, "last_record_game"):
-                self.stats["training"]["Último récord (juego)"] = agent.last_record_game
-
-        # Dibujar todas las categorías de estadísticas
-        y_offset = panel_y + 60
-        padding = 15
-        line_height = 22  # Altura estándar de línea
-
-        # Reestructurar el orden de las categorías para mejor visualización
-        # Asegurarse de que "model" y "training" siempre estén presentes
-        all_categories = ["basic", "efficiency", "training", "model"]
-
-        # Asegurarse de que la categoría "training" siempre esté presente
-        if "training" not in self.stats or not self.stats["training"]:
-            self.stats["training"] = {
-                "Recompensa media": 0.0,
-                "Último récord (juego)": self._get_last_record_game()
-            }
-
-        # Forzar que la categoría "model" siempre esté presente
-        if "model" not in self.stats or not self.stats["model"]:
-            self.stats["model"] = {
-                "Pérdida": 0.0,
-                "Temperatura": 0.99,
-                "Learning rate": 0.001,
-                "Pathfinding": "Activado",
-                "Modo de explotación": "Pathfinding habilitado"
-            }
-
-        # Importar el sistema de eventos para otras funcionalidades
-        from utils.helper import event_system
-
-        # Asegurarse de que todas las categorías existan en self.stats
-        for category in all_categories:
-            if category not in self.stats:
-                self.stats[category] = {}
-
-        # Formatos específicos para diferentes tipos de valores (coincidiendo con la consola)
-        formats = {
-            "Recompensa total": ".4f",
-            "Recompensa media": ".2f",
-            "Recompensa": ".4f",
-            "Ratio de eficiencia": ".2f",
-            "Pasos por comida": ".2f",
-            "Pérdida": ".4f",
-            "Temperatura": ".4f",
-            "Learning rate": ".6f",
-            "Recto %": ".1f",
-            "Derecha %": ".1f",
-            "Izquierda %": ".1f",
-            "Puntuación": "d",  # Formato entero para puntuación
-            "Récord": "d"       # Formato entero para récord
-        }
-
-        # Asegurarse de que el panel tenga suficiente espacio
-        panel_height = self.grid_height_blocks * BLOCK_SIZE
-
-        for category in all_categories:
-            # Dibujar encabezado de categoría
-            category_title = self._get_category_title(category)
-            cat_title = self.stats_title_font.render(category_title, True, self.stats_colors[category])
-            self.display.blit(cat_title, (panel_x + padding, y_offset))
-            y_offset += 25
-
-            # Dibujar línea separadora
-            pygame.draw.line(self.display, self.stats_colors[category],
-                           (panel_x + padding, y_offset),
-                           (panel_x + panel_width - padding, y_offset), 1)
-            y_offset += 10
-
-            # Dibujar estadísticas de esta categoría
-            if category in self.stats:
-                # Manejo especial para la categoría "model" para asegurar que siempre se muestre
-                if category == "model" and (not self.stats[category] or len(self.stats[category]) == 0):
-                    # Si la categoría está vacía, usar valores por defecto
-                    self.stats[category] = {
-                        "Temperatura": 0.99,
-                        "Learning rate": 0.001,
-                        "Pathfinding": "Activado",
-                        "Modo de explotación": "Pathfinding habilitado"
-                    }
-
-                # Para la categoría de entrenamiento, SIEMPRE actualizar el valor del último récord
-                if category == "training":
-                    # Usar nuestro método dedicado para obtener el valor más actualizado
-                    last_record = self._get_last_record_game()
-                    self.stats[category]["Último récord (juego)"] = last_record
-                    # Comentado para no saturar la consola
-                    # print(f"[DEBUG] Actualizando último récord en panel: {last_record}")
-
-                # Procesar los valores de la categoría
-                for key, value in self.stats[category].items():
-                    # Formatear el valor según su tipo y formato específico
-                    if isinstance(value, float):
-                        if key in formats:
-                            format_spec = formats[key]
-                            formatted_value = f"{value:{format_spec}}"
-                        else:
-                            # Usar más decimales para valores pequeños
-                            if abs(value) < 0.1:
-                                formatted_value = f"{value:.6f}"
-                            else:
-                                formatted_value = f"{value:.4f}"
-                    elif isinstance(value, list):
-                        formatted_value = str(value)
-                    else:
-                        formatted_value = str(value)
-
-                    # Renderizar la etiqueta y el valor con colores diferentes
-                    key_text = self.stats_font.render(f"{key}: ", True, WHITE)
-                    value_text = self.stats_font.render(formatted_value, True, self.stats_colors[category])
-
-                    # Posicionar y mostrar
-                    self.display.blit(key_text, (panel_x + padding, y_offset))
-                    self.display.blit(value_text, (panel_x + padding + key_text.get_width(), y_offset))
-                    y_offset += line_height
-
-            y_offset += 15  # Espacio entre categorías
-
-        # Asegurarse de que no se salga del panel
-        if y_offset > panel_y + panel_height - 30:
-            # Reducir el espacio entre categorías si es necesario
-            y_offset = panel_y + panel_height - 30
-
-    def _update_stats(self):
-        """Actualiza el diccionario de estadísticas con los valores actuales.
-        Este método se llama antes de renderizar el panel de estadísticas.
-        """
-        # Importar el sistema de registro de errores
-        from utils.error_logger import stats_panel_logger, log_error, log_warning, log_info
-
-        # Verificar si es necesario actualizar las estadísticas
-        # Solo actualizar si han pasado al menos 100ms desde la última actualización
-        current_time = time.time()
-        if hasattr(self, "_last_stats_update_time") and current_time - self._last_stats_update_time < 0.1:
-            # Si se actualizó recientemente, no hacer nada
-            return
-
-        # Registrar el tiempo de actualización
-        self._last_stats_update_time = current_time
-
-        # Obtener el agente si está disponible
-        agent = globals()["agent"] if "agent" in globals() else None
-        if agent is None:
-            log_warning(stats_panel_logger, "UpdateStats", "No se pudo obtener el agente global")
-
-        # Importar el sistema de eventos para obtener datos actualizados
-        from utils.helper import event_system
-
-        # Inicializar todas las categorías de estadísticas
-        self.stats = {
-            "basic": {},
-            "training": {},
-            "efficiency": {},
-            "model": {}
-        }
-
-        log_info(stats_panel_logger, "UpdateStats", "Actualizando estadísticas del panel")
-
-        # Los parámetros del modelo se obtienen directamente de shared_data en la sección de parámetros del modelo
-
-        # Estadísticas básicas mejoradas
-        self.stats["basic"] = {
-            "Puntuación": self.score,
-            "Récord": self.record,
-            "Pasos": self.steps
-        }
-
-        # Añadir recompensa total a las estadísticas básicas
-        if self.reward_history:
-            total_reward = sum(self.reward_history)
-            self.stats["basic"]["Recompensa total"] = round(total_reward, 4)
-
-        # Eliminamos el estado de pathfinding de las estadísticas básicas
-        # ya que ahora se muestra en los parámetros del modelo
-
-        # Estadísticas de entrenamiento mejoradas
-        # Siempre crear la categoría de entrenamiento, incluso si no hay reward_history
-        avg_reward = sum(self.reward_history) / len(self.reward_history) if self.reward_history and len(self.reward_history) > 0 else 0
-
-        # Obtener el valor más reciente de last_record_game usando nuestro método dedicado
-        last_record_game = self._get_last_record_game()
-
-        # Comentado para no saturar la consola
-        # print(f"[DEBUG] _update_stats: Último récord = {last_record_game}")
-
-        self.stats["training"] = {
-            "Recompensa media": avg_reward,
-            "Último récord (juego)": last_record_game
-        }
-
-        # Añadir puntuaciones recientes
-        if agent and hasattr(agent, "recent_scores"):
-            recent_scores = agent.recent_scores[-4:] if len(agent.recent_scores) >= 4 else agent.recent_scores
-            self.stats["training"]["Puntuaciones recientes"] = str(recent_scores)
-
-        # Estadísticas de eficiencia
-        if len(self.snake) > 0:
-            unique_positions = len(set((p.x, p.y) for p in self.snake))
-            efficiency_ratio = unique_positions / len(self.snake) if len(self.snake) > 0 else 0
-            steps_per_food = self.steps / self.score if self.score > 0 else self.steps
-
-            self.stats["efficiency"] = {
-                "Ratio de eficiencia": efficiency_ratio,
-                "Pasos por comida": steps_per_food
-            }
-
-            # Eliminamos la fase de exploración y el modo de explotación de las estadísticas de eficiencia
-            # ya que ahora se muestran en los parámetros del modelo
-
-        # Parámetros del Modelo - SIEMPRE actualizar independientemente del agente
-        # Inicializar con valores por defecto para asegurar que siempre haya algo que mostrar
-        model_stats = {
-            "Temperatura": 0.99,
-            "Learning rate": 0.001,
-            "Pathfinding": "Activado",
-            "Modo de explotación": "Pathfinding habilitado"
-        }
-
-        try:
-            # Obtener valores directamente de shared_data
-            from src.shared_data import get_model_params
-            model_params = get_model_params()
-
-            # Actualizar los valores por defecto con los valores reales
-            if model_params:
-
-                # Añadir temperatura si está disponible
-                if "temperature" in model_params and model_params["temperature"] is not None:
-                    try:
-                        temp_value = float(model_params["temperature"])
-                        model_stats["Temperatura"] = round(temp_value, 4)
-                    except (ValueError, TypeError):
-                        pass
-
-                # Añadir learning rate si está disponible
-                if "learning_rate" in model_params and model_params["learning_rate"] is not None:
-                    try:
-                        lr_value = float(model_params["learning_rate"])
-                        model_stats["Learning rate"] = round(lr_value, 6)
-                    except (ValueError, TypeError):
-                        pass
-
-                # Añadir estado de pathfinding
-                if "pathfinding_enabled" in model_params:
-                    pathfinding_status = "Activado" if model_params["pathfinding_enabled"] else "Desactivado"
-                    model_stats["Pathfinding"] = pathfinding_status
-
-                # Añadir modo de explotación directamente
-                if "mode" in model_params:
-                    model_stats["Modo de explotación"] = model_params["mode"]
-        except Exception:
-            pass  # Ignorar errores silenciosamente
-
-        # No imprimir para reducir logs
-
-        # Actualizar la categoría del modelo - SIEMPRE actualizar
-        self.stats["model"] = model_stats
-
-            # Se ha eliminado la sección de normas de pesos como solicitado
-
-        # Se ha eliminado la sección de resumen del juego como solicitado
-
-    def _get_category_title(self, category):
-        """Devuelve el título formateado para una categoría de estadísticas."""
-        titles = {
-            "basic": "Estadísticas Básicas",
-            "training": "Entrenamiento",
-            "efficiency": "Eficiencia",
-            "actions": "Distribución de Acciones",
-            "model": "Parámetros del Modelo"
-        }
-        return titles.get(category, category.capitalize())
-
-    def _get_last_record_game(self):
-        """Obtiene el valor de last_record_game directamente del agente.
-        Este método garantiza que siempre obtendremos el valor más actualizado.
-
-        Returns:
-            int: El número del juego donde se obtuvo el último récord.
-        """
-        # Importar el sistema de registro de errores
-        from utils.error_logger import stats_panel_logger, log_error, log_warning, log_info
-
-        try:
-            # Intentar obtener el agente global
-            agent = globals().get("agent", None)
-            if agent is None:
-                log_warning(stats_panel_logger, "LastRecord", "No se pudo obtener el agente global")
-            elif not hasattr(agent, "last_record_game"):
-                log_warning(stats_panel_logger, "LastRecord", "El agente no tiene el atributo 'last_record_game'")
-            else:
-                # Agente válido con el atributo necesario
-                last_record = agent.last_record_game
-                log_info(stats_panel_logger, "LastRecord", f"Obtenido último récord del agente: {last_record}")
-                return last_record
-
-            # Si no se puede obtener del agente, intentar obtenerlo de shared_data
-            from utils.helper import latest_game_summary
-            if "Último récord obtenido en partida" in latest_game_summary:
-                last_record = latest_game_summary["Último récord obtenido en partida"]
-                log_info(stats_panel_logger, "LastRecord", f"Obtenido último récord de latest_game_summary: {last_record}")
-                return last_record
-            else:
-                log_warning(stats_panel_logger, "LastRecord", "No se encontró el último récord en latest_game_summary")
-
-        except Exception as e:
-            # Registrar el error con detalles
-            log_error(
-                stats_panel_logger,
-                "LastRecord",
-                "Error al obtener último récord",
-                exception=e,
-                context={
-                    "agent_exists": "agent" in globals(),
-                    "latest_game_summary_keys": str(list(latest_game_summary.keys())) if 'latest_game_summary' in locals() else "No disponible"
-                }
-            )
-
-        # Si no se pudo obtener de ninguna fuente, devolver 0
-        return 0
 
     def _place_food(self):
         """Coloca comida en una posición aleatoria que no esté ocupada por la serpiente,

@@ -175,6 +175,55 @@ El sistema incluye herramientas para monitorear y analizar el rendimiento:
 - **Alertas Automáticas**: Detecta problemas potenciales durante el entrenamiento.
 - **Evaluación Periódica**: Prueba el rendimiento del agente en escenarios controlados.
 
+## 📂 Panel de Estadísticas: Integración, Cobertura y Pruebas
+
+### Arquitectura y Funcionamiento
+
+El **panel de estadísticas** está gestionado por la clase `StatsManager`, que centraliza la recolección, actualización y notificación de cambios en las métricas del juego y del agente. El panel se refresca de manera eficiente gracias a un sistema de eventos y un dirty flag, asegurando que solo se actualice cuando hay cambios reales en los datos.
+
+#### Métricas cubiertas:
+- **Básicas:** Puntuación, Récord, Pasos
+- **Eficiencia:** Ratio de eficiencia, Pasos por comida
+- **Acciones:** Recto %, Derecha %, Izquierda %
+- **Entrenamiento:** Recompensa media, Último récord (juego)
+- **Modelo:** Pérdida, Temperatura, Learning rate, Pathfinding, Modo de explotación
+
+#### Flujo de integración
+1. El juego y el agente actualizan sus métricas internas.
+2. `StatsManager` detecta cualquier cambio relevante (comparación profunda por categoría).
+3. Si hay cambios, activa el dirty flag y notifica a la UI mediante el sistema de eventos.
+4. El panel de estadísticas se refresca solo cuando el dirty flag está activo, mostrando siempre la información más reciente y precisa.
+
+### Pruebas Unitarias y de Integración
+
+El archivo `test_stats_event_system.py` incluye **tests exhaustivos** para cada grupo de métricas y para la integración completa del panel:
+- Cada test verifica que el valor mostrado en el panel corresponde al valor actualizado en el juego o el agente.
+- Se comprueba que el dirty flag y la notificación de eventos funcionan correctamente.
+- El test de integración simula el ciclo completo: actualización de métrica, refresco del panel y verificación de la visualización.
+
+#### Ejecución de las pruebas
+
+Para validar que todo el panel y el sistema de eventos funcionan correctamente:
+
+```bash
+python -m unittest test_stats_event_system.py
+```
+
+Si todos los tests pasan (`OK`), puedes estar seguro de que la integración entre el panel, el sistema de eventos y el backend es robusta y funcional.
+
+### Validación manual en la interfaz
+
+1. Ejecuta el juego normalmente:
+   ```bash
+   python main.py
+   ```
+2. Observa el panel de estadísticas: cada vez que cambies una métrica (por ejemplo, al superar un récord), el valor debe actualizarse automáticamente y sin retrasos.
+3. Si detectas un valor incorrecto, ejecuta nuevamente los tests para aislar el problema.
+
+---
+
+**¡Con esta arquitectura y cobertura de pruebas, puedes confiar en la precisión y eficiencia del panel de estadísticas, tanto a nivel interno como visual!**
+
 ## 📝 Documentación Adicional
 
 Para más detalles sobre la arquitectura y el diseño del sistema, consulta los archivos en la carpeta `docs/`:
