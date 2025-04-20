@@ -20,15 +20,16 @@ Este proyecto implementa el clásico juego de Snake utilizando Deep Q-Learning (
 
 - Python 3.7 o superior
 - Dependencias principales:
-  - PyGame >= 2.0.0 (motor del juego)
-  - PyTorch >= 1.7.0 (framework de aprendizaje profundo)
-  - NumPy >= 1.19.0 (procesamiento numérico)
-  - Pandas >= 1.1.0 (análisis de datos)
-  - Matplotlib >= 3.3.0 y Seaborn >= 0.11.0 (visualización)
+  - PyGame 2.6.1 (motor del juego)
+  - PyTorch 1.13.1 (framework de aprendizaje profundo)
+  - NumPy 1.21.6 (procesamiento numérico)
+  - Pandas 1.3.5 (análisis de datos)
+  - Matplotlib 3.5.3 y Seaborn 0.12.2 (visualización)
+  - Colorama 0.4.4 (salida de consola coloreada)
 
 ## 📍 Instalación
 
-### Opción 1: Instalación Estándar
+### Opción 1: Usando Scripts de Configuración (Recomendado)
 
 1. Clona este repositorio:
 
@@ -37,36 +38,59 @@ Este proyecto implementa el clásico juego de Snake utilizando Deep Q-Learning (
    cd snake-dqn
    ```
 
-2. Instala las dependencias:
-   ```bash
-   pip install -r requirements.txt
-   ```
+2. Ejecuta el script de configuración:
 
-### Opción 2: Usando un Entorno Virtual (Recomendado)
+   - En Windows:
+     ```bash
+     setup_env.bat
+     ```
+   - En macOS/Linux:
+     ```bash
+     chmod +x setup_env.sh
+     ./setup_env.sh
+     ```
 
-1. Clona el repositorio y crea un entorno virtual:
+   Estos scripts crearán un entorno virtual, lo activarán e instalarán todas las dependencias necesarias.
+
+### Opción 2: Instalación Manual
+
+1. Clona este repositorio:
 
    ```bash
    git clone https://github.com/tu-usuario/snake-dqn.git
    cd snake-dqn
-   python -m venv venv
    ```
 
-2. Activa el entorno virtual:
+2. Crea y activa un entorno virtual (recomendado):
 
    - En Windows:
      ```bash
+     python -m venv venv
      venv\Scripts\activate
      ```
    - En macOS/Linux:
      ```bash
+     python3 -m venv venv
      source venv/bin/activate
      ```
 
 3. Instala las dependencias:
+
    ```bash
    pip install -r requirements.txt
    ```
+
+   El archivo requirements.txt incluye todas las dependencias necesarias, con comentarios claros sobre cuáles son esenciales y cuáles son opcionales. Puedes editar este archivo para descomentar las dependencias adicionales que necesites.
+
+### Verificación del Entorno
+
+Para verificar que tu entorno está configurado correctamente:
+
+```bash
+python check_env.py
+```
+
+Este script comprobará que todas las dependencias estén instaladas con las versiones correctas y que el sistema esté listo para ejecutar el proyecto.
 
 ## 🎮 Uso
 

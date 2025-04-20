@@ -5,6 +5,7 @@ Esta rama se enfoca en mejorar la gestión de dependencias del proyecto, asegura
 ## Objetivos
 
 1. **Actualizar requirements.txt**
+
    - Especificar versiones exactas de todas las dependencias
    - Organizar dependencias por categorías
    - Documentar el propósito de cada dependencia
@@ -18,43 +19,43 @@ Esta rama se enfoca en mejorar la gestión de dependencias del proyecto, asegura
 
 ### Actualización de requirements.txt
 
-- [ ] Auditar todas las dependencias actuales
-- [ ] Determinar las versiones mínimas y máximas compatibles
-- [ ] Actualizar `requirements.txt` con versiones específicas
-- [ ] Organizar dependencias en categorías:
+- [x] Auditar todas las dependencias actuales
+- [x] Determinar las versiones mínimas y máximas compatibles
+- [x] Actualizar `requirements.txt` con versiones específicas
+- [x] Organizar dependencias en categorías:
   - Dependencias principales
   - Dependencias de visualización
   - Dependencias de desarrollo
   - Dependencias opcionales
-- [ ] Añadir comentarios explicativos para cada dependencia
-- [ ] Crear archivos de requisitos separados para diferentes casos de uso:
-  - `requirements-dev.txt`: Para desarrollo
-  - `requirements-minimal.txt`: Instalación mínima
-  - `requirements-full.txt`: Todas las características
+- [x] Añadir comentarios explicativos para cada dependencia
+- [x] Unificar todas las dependencias en un solo archivo `requirements.txt` con secciones claras y comentarios explicativos
 
 ### Gestión de Entorno Virtual
 
-- [ ] Crear scripts para configurar entornos virtuales:
+- [x] Crear scripts para configurar entornos virtuales:
   - `setup_env.bat` para Windows
   - `setup_env.sh` para Linux/macOS
-- [ ] Implementar verificación de versión de Python
-- [ ] Añadir instrucciones detalladas en el README
-- [ ] Crear un script de verificación de entorno
-- [ ] Implementar detección y solución de problemas comunes
+- [x] Implementar verificación de versión de Python
+- [x] Añadir instrucciones detalladas en el README
+- [x] Crear un script de verificación de entorno (`check_env.py`)
+- [x] Implementar detección y solución de problemas comunes
 
 ## Plan de Implementación
 
 1. **Fase 1: Auditoría de Dependencias**
+
    - Identificar todas las dependencias utilizadas en el código
    - Determinar qué dependencias son esenciales vs. opcionales
    - Verificar compatibilidad entre versiones
 
 2. **Fase 2: Actualización de requirements.txt**
+
    - Actualizar el archivo con versiones específicas
    - Organizar y comentar el archivo
    - Crear archivos de requisitos adicionales
 
 3. **Fase 3: Scripts de Entorno**
+
    - Desarrollar scripts para diferentes sistemas operativos
    - Probar en diferentes entornos
    - Documentar el proceso
