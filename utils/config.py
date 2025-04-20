@@ -39,7 +39,7 @@ SHOW_HEATMAP = True  # Mostrar mapa de calor de posiciones visitadas
 PARTICLE_EFFECTS = True  # Efectos de partículas al comer comida
 SHADOW_EFFECTS = True  # Efectos de sombra para la serpiente
 ANIMATION_SPEED = 1.0  # Velocidad de animación (1.0 = normal)
-HEATMAP_OPACITY = 30  # Opacidad del mapa de calor (0-255)
+HEATMAP_OPACITY = 40  # Opacidad del mapa de calor (0-255)
 
 # Parámetros de gestión de memoria
 MAX_MEMORY = 300_000
@@ -57,7 +57,7 @@ TAU = 0.005  # Tasa de actualización de la red objetivo
 TEMPERATURE = 0.99  # Temperatura inicial
 MIN_TEMPERATURE = 0.15  # Temperatura mínima
 PREV_LOSS = 0.0  # Pérdida previa
-DECAY_RATE = 0.9995  # Tasa de decaimiento
+DECAY_RATE = 0.9992  # Tasa de decaimiento
 
 # Configuración de fase de exploración
 EXPLORATION_PHASE = False  # Activar/desactivar fase de exploración

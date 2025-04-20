@@ -84,6 +84,7 @@ class Agent:
         self.exploration_phase = EXPLORATION_PHASE
         self.exploration_games_left = 0
         self.last_exploration_game = 0
+        self.last_loss = 0.0  # Almacenar la última pérdida para mostrarla en el panel de estadísticas
 
         # Inicializar diccionario para seguimiento de las mejores métricas
         self.best_metrics = {}
@@ -118,20 +119,9 @@ class Agent:
                 if temperature is not None:
                     self.temperature = temperature
                     self.pre_exploration_temp = temperature
-                    print(
-                        Fore.LIGHTYELLOW_EX
-                        + f"Temperatura restaurada del checkpoint: {self.temperature:.4f}"
-                        + Style.RESET_ALL
-                    )
                 if optimizer_state_dict is not None:
                     try:
                         self.trainer.optimizer.load_state_dict(optimizer_state_dict)
-                        print(
-                            Fore.LIGHTYELLOW_EX
-                            + "Restored optimizer state from checkpoint"
-                            + Style.RESET_ALL
-                        )
-                        print(Fore.RED + "-" * 60 + Style.RESET_ALL)
                     except Exception as e:
                         print(f"Error restoring optimizer state: {e}")
             else:
@@ -147,10 +137,36 @@ class Agent:
 
         self.game_results = []
 
+        # Inicializar los parámetros del modelo en shared_data
+        try:
+            from src.shared_data import update_model_params
+            current_lr = None
+            if hasattr(self, "trainer") and hasattr(self.trainer, "optimizer"):
+                for param_group in self.trainer.optimizer.param_groups:
+                    if 'lr' in param_group:
+                        current_lr = param_group['lr']
+                        break
+
+            initial_model_params = {
+                "loss": self.last_loss if hasattr(self, "last_loss") else 0.0,
+                "temperature": self.temperature,
+                "pathfinding_enabled": self.pathfinding_enabled,
+                "exploration_phase": self.exploration_phase if hasattr(self, "exploration_phase") else False,
+                "exploration_games_left": self.exploration_games_left if hasattr(self, "exploration_games_left") else 0,
+                "learning_rate": current_lr,
+                "mode": "Pathfinding habilitado" if self.pathfinding_enabled else "Explotación normal"
+            }
+            update_model_params(initial_model_params)
+            print(f"[AGENT_INIT] Parámetros del modelo inicializados: {initial_model_params}")
+        except Exception as e:
+            print(f"[AGENT_INIT] Error al inicializar parámetros del modelo: {e}")
+
     def monitor_memory(self):
         """Monitor memory usage and prune if necessary"""
         if self.n_games % MEMORY_MONITOR_FREQ != 0:
             return
+
+        from utils.logger import Logger
 
         # Get memory usage of replay buffer
         buffer_size_mb = self.memory.get_memory_usage()
@@ -159,21 +175,21 @@ class Agent:
         system_memory = psutil.virtual_memory()
         system_used_percent = system_memory.percent
 
-        print(Fore.CYAN + f"Memory Monitor - Game {self.n_games}:" + Style.RESET_ALL)
-        print(
-            f"  Replay Buffer: {buffer_size_mb:.2f} MB ({len(self.memory.memory)} experiences)"
-        )
-        print(f"  System Memory: {system_used_percent:.1f}% used")
-
         # Check if buffer is getting too large relative to capacity
         buffer_fill_ratio = len(self.memory.memory) / MAX_MEMORY
 
+        # Imprimir estado de la memoria
+        Logger.print_memory_status(
+            self.n_games,
+            buffer_size_mb,
+            len(self.memory.memory),
+            system_used_percent,
+            buffer_fill_ratio
+        )
+
+        # Podar memoria si es necesario
         if buffer_fill_ratio > MEMORY_PRUNE_THRESHOLD:
-            print(
-                Fore.YELLOW
-                + f"  Buffer fill ratio ({buffer_fill_ratio:.2f}) exceeds threshold, pruning..."
-                + Style.RESET_ALL
-            )
+            Logger.print_warning(f"Buffer fill ratio ({buffer_fill_ratio:.2f}) exceeds threshold, pruning...")
             self.memory.prune_memory()
 
         # Log memory stats
@@ -279,6 +295,9 @@ class Agent:
         self.memory.push(experience)
 
     def train_long_memory(self):
+        from utils.numpy_utils import safe_normalize
+        from utils.helper import event_system
+
         mini_sample, indices, weights = self.memory.sample(BATCH_SIZE)
         states, actions, rewards, next_states, dones = zip(*mini_sample)
 
@@ -289,9 +308,9 @@ class Agent:
         dones = np.array(dones)
         weights = np.array(weights)
 
-        # Normaliza las recompensas
+        # Normaliza las recompensas de forma segura
         if len(rewards) > 10:  # Solo normaliza si hay suficientes ejemplos
-            rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
+            rewards = safe_normalize(rewards)
 
         loss = self.trainer.train_step(
             states, actions, rewards, next_states, dones, weights
@@ -301,9 +320,41 @@ class Agent:
         priorities = [loss + 1e-5 for _ in range(len(indices))]
         self.memory.update_priorities(indices, priorities)
 
+        # Actualizar la última pérdida para mostrarla en el panel de estadísticas
+        self.last_loss = loss
+
+        # Actualizar los parámetros del modelo en shared_data
+        # Obtener learning rate actual
+        current_lr = None
+        if hasattr(self, "trainer") and hasattr(self.trainer, "optimizer"):
+            for param_group in self.trainer.optimizer.param_groups:
+                if 'lr' in param_group:
+                    current_lr = param_group['lr']
+                    break
+
+        model_params = {
+            "loss": loss,
+            "temperature": self.temperature,
+            "pathfinding_enabled": self.pathfinding_enabled if hasattr(self, "pathfinding_enabled") else True,
+            "exploration_phase": self.exploration_phase if hasattr(self, "exploration_phase") else False,
+            "exploration_games_left": self.exploration_games_left if hasattr(self, "exploration_games_left") else 0,
+            "learning_rate": current_lr
+        }
+
+        # Actualizar en shared_data
+        from src.shared_data import update_model_params
+        update_model_params(model_params)
+        print(f"[TRAIN_LONG] Parámetros del modelo actualizados en shared_data: {model_params}")
+
+        # También notificar a través del sistema de eventos para compatibilidad
+        event_system.notify("model_params_updated", model_params)
+
         return loss  # Return the loss value
 
     def train_short_memory(self, state, action, reward, next_state, done):
+        from utils.numpy_utils import safe_mean, safe_std
+        from utils.helper import event_system
+
         action_idx = np.array([np.argmax(action)])
         weights = np.ones((1,), dtype=np.float32)
 
@@ -312,8 +363,8 @@ class Agent:
 
         # Normalizar la recompensa si es posible (usando estadísticas recientes)
         if hasattr(self, 'recent_rewards') and len(self.recent_rewards) > 10:
-            reward_mean = np.mean(self.recent_rewards)
-            reward_std = np.std(self.recent_rewards) + 1e-8
+            reward_mean = safe_mean(self.recent_rewards)
+            reward_std = safe_std(self.recent_rewards)
             reward_array = (reward_array - reward_mean) / reward_std
 
         # Mantener un historial de recompensas recientes para normalización
@@ -323,7 +374,35 @@ class Agent:
         if len(self.recent_rewards) > 100:  # Limitar a las 100 recompensas más recientes
             self.recent_rewards.pop(0)
 
-        self.trainer.train_step(state, action_idx, reward_array[0], next_state, done, weights)
+        loss = self.trainer.train_step(state, action_idx, reward_array[0], next_state, done, weights)
+
+        # Actualizar la última pérdida para mostrarla en el panel de estadísticas
+        self.last_loss = loss
+
+        # Actualizar los parámetros del modelo en shared_data
+        # Obtener learning rate actual
+        current_lr = None
+        if hasattr(self, "trainer") and hasattr(self.trainer, "optimizer"):
+            for param_group in self.trainer.optimizer.param_groups:
+                if 'lr' in param_group:
+                    current_lr = param_group['lr']
+                    break
+
+        model_params = {
+            "loss": loss,
+            "temperature": self.temperature,
+            "pathfinding_enabled": self.pathfinding_enabled if hasattr(self, "pathfinding_enabled") else True,
+            "exploration_phase": self.exploration_phase if hasattr(self, "exploration_phase") else False,
+            "exploration_games_left": self.exploration_games_left if hasattr(self, "exploration_games_left") else 0,
+            "learning_rate": current_lr
+        }
+
+        # Actualizar en shared_data
+        from src.shared_data import update_model_params
+        update_model_params(model_params)
+
+        # También notificar a través del sistema de eventos para compatibilidad
+        event_system.notify("model_params_updated", model_params)
 
     def get_action(self, game, state):
         # Intenta encontrar un camino óptimo si el pathfinding está habilitado
@@ -416,35 +495,61 @@ class Agent:
         exploration_frequency,
         exploration_duration,
     ):
+        from utils.logger import Logger
+
         # Inicia fase de exploración si corresponde
         if (
             current_game > 0
             and current_game % exploration_frequency == 0
             and current_game > self.last_exploration_game + exploration_frequency / 2
         ):
-            print(
-                Fore.YELLOW
-                + f"¡Iniciando fase de exploración por {exploration_duration} juegos!"
-                + Style.RESET_ALL
-            )
+            Logger.print_section("Fase de Exploración")
+            Logger.print_warning(f"!Iniciando fase de exploración por {exploration_duration} juegos!")
             self.exploration_phase = True
             self.exploration_games_left = exploration_duration
             self.last_exploration_game = current_game
             self.pre_exploration_temp = self.temperature
             self.temperature = exploration_temp
+
+            # Actualizar los parámetros del modelo en shared_data
+            from src.shared_data import update_model_params
+            model_params = {
+                "exploration_phase": True,
+                "exploration_games_left": exploration_duration,
+                "temperature": exploration_temp,
+                "mode": f"Exploración (restantes: {exploration_duration})"
+            }
+            update_model_params(model_params)
+            print(f"[EXPLORATION_START] Parámetros del modelo actualizados: {model_params}")
+
             return
 
         # Si estamos en fase de exploración, reducir el contador
         if self.exploration_phase:
             self.exploration_games_left -= 1
+
+            # Actualizar los parámetros del modelo en shared_data con los juegos restantes
+            from src.shared_data import update_model_params
+            model_params = {
+                "exploration_games_left": self.exploration_games_left,
+                "mode": f"Exploración (restantes: {self.exploration_games_left})"
+            }
+            update_model_params(model_params)
+
             if self.exploration_games_left <= 0:
                 self.exploration_phase = False
                 self.temperature = self.pre_exploration_temp
-                print(
-                    Fore.YELLOW
-                    + f"Fase de exploración terminada. Volviendo a temperatura {self.temperature:.4f}"
-                    + Style.RESET_ALL
-                )
+                Logger.print_warning(f"Fase de exploración terminada. Volviendo a temperatura {self.temperature:.4f}")
+
+                # Actualizar los parámetros del modelo en shared_data al terminar la exploración
+                model_params = {
+                    "exploration_phase": False,
+                    "temperature": self.temperature,
+                    "mode": "Pathfinding habilitado" if self.pathfinding_enabled else "Explotación normal"
+                }
+                update_model_params(model_params)
+                print(f"[EXPLORATION_END] Parámetros del modelo actualizados: {model_params}")
+
                 return
 
         # Ajuste de temperatura fuera de fase de exploración
@@ -453,32 +558,45 @@ class Agent:
             self.temperature = max(self.temperature * decay_rate, min_temperature)
             # Mostrar cambio de temperatura solo si es significativo
             if abs(old_temp - self.temperature) > 0.001:
-                print(
-                    Fore.CYAN
-                    + f"Temperatura actualizada: {old_temp:.4f} -> {self.temperature:.4f}"
-                    + Style.RESET_ALL
-                )
+                Logger.print_info(f"Temperatura actualizada: {old_temp:.4f} -> {self.temperature:.4f}")
+
+                # Actualizar los parámetros del modelo en shared_data con la nueva temperatura
+                from src.shared_data import update_model_params
+                model_params = {
+                    "temperature": self.temperature
+                }
+                update_model_params(model_params)
+                print(f"[TEMP_UPDATE] Parámetros del modelo actualizados: {model_params}")
 
     def set_pathfinding(self, enabled=True):
         """Activa o desactiva el pathfinding para la selección de acciones"""
+        from utils.logger import Logger
+
         self.pathfinding_enabled = enabled
-        print(
-            Fore.CYAN
-            + f"Pathfinding {'activado' if enabled else 'desactivado'}"
-            + Style.RESET_ALL
-        )
+        Logger.print_info(f"Pathfinding {'activado' if enabled else 'desactivado'}")
+
+        # Actualizar los parámetros del modelo en shared_data
+        from src.shared_data import update_model_params
+        model_params = {
+            "pathfinding_enabled": enabled,
+            "mode": "Pathfinding habilitado" if enabled else "Explotación normal"
+        }
+        update_model_params(model_params)
+        print(f"[SET_PATHFINDING] Parámetros del modelo actualizados: {model_params}")
 
 
 def train(max_games: int) -> None:
+    from utils.logger import Logger
+
     # Inicializar pygame si no está inicializado
     if not pygame.get_init():
         pygame.init()
 
     # Mostrar pantalla de inicio para seleccionar configuración visual
     visual_config = get_user_config()
-    print(Fore.GREEN + "Configuración visual seleccionada:" + Style.RESET_ALL)
-    for key, value in visual_config.items():
-        print(f"  {key}: {value}")
+
+    # Imprimir información de inicio del entrenamiento
+    Logger.print_training_start()
 
     agent = Agent()
     # Hacer que el agente sea accesible globalmente
@@ -495,6 +613,27 @@ def train(max_games: int) -> None:
     total_score = 0
     plot_mean_scores = []
     plot_scores = []
+
+    # Inicializar los parámetros del modelo en shared_data
+    from src.shared_data import update_model_params
+    current_lr = None
+    if hasattr(agent, "trainer") and hasattr(agent.trainer, "optimizer"):
+        for param_group in agent.trainer.optimizer.param_groups:
+            if 'lr' in param_group:
+                current_lr = param_group['lr']
+                break
+
+    initial_model_params = {
+        "loss": agent.last_loss if hasattr(agent, "last_loss") else 0.0,
+        "temperature": agent.temperature,
+        "pathfinding_enabled": agent.pathfinding_enabled,
+        "exploration_phase": agent.exploration_phase if hasattr(agent, "exploration_phase") else False,
+        "exploration_games_left": agent.exploration_games_left if hasattr(agent, "exploration_games_left") else 0,
+        "learning_rate": current_lr,
+        "mode": "Pathfinding habilitado" if agent.pathfinding_enabled else "Explotación normal"
+    }
+    update_model_params(initial_model_params)
+    print(f"[INIT] Parámetros del modelo inicializados: {initial_model_params}")
 
     # Temperature decay settings
     min_temperature = MIN_TEMPERATURE
@@ -547,9 +686,13 @@ def train(max_games: int) -> None:
                 exploration_duration,
             )
 
+            from utils.logger import Logger
+
             # Ajustar tasa de aprendizaje dinámicamente
             current_lr = agent.adjust_learning_rate()
-            print(Fore.CYAN + f"Learning rate ajustada a: {current_lr:.6f}" + Style.RESET_ALL)
+
+            # Guardar el valor de steps antes de resetear el juego
+            steps_taken = game.steps
 
             # Actualizar contador de juegos y resetear el juego
             agent.n_games += 1
@@ -563,11 +706,14 @@ def train(max_games: int) -> None:
                 agent.last_record_game = agent.n_games
 
                 # Guardar un checkpoint basado en record
-                print(
-                    Fore.CYAN
-                    + f"New record at game: {agent.last_record_game}!"
-                    + Style.RESET_ALL
-                )
+                Logger.print_success(f"¡Nuevo récord en el juego {agent.last_record_game}!")
+
+                # Comentado para no saturar la consola
+                # print(f"[DEBUG] train: Nuevo récord establecido en el juego {agent.last_record_game}")
+
+                # Forzar actualización del resumen del juego para propagar el nuevo valor
+                from utils.helper import update_game_summary
+                update_game_summary(game=game, agent=agent, force_update=True)
 
             save_checkpoint(agent, loss)
 
@@ -576,51 +722,66 @@ def train(max_games: int) -> None:
                 agent, score, total_score, plot_scores, plot_mean_scores
             )
 
-            # Auxiliary functions to print information
-            print(Fore.RED + "-" * 60 + Style.RESET_ALL)
-            print(
-                Fore.LIGHTYELLOW_EX
-                + f"                    || Game {agent.n_games} ||"
-                + Style.RESET_ALL
-            )
-            print(
-                Fore.LIGHTMAGENTA_EX + f"Ended with loss: {loss:.4f}" + Style.RESET_ALL
-            )
-            print(
-                Fore.LIGHTMAGENTA_EX
-                + f"Total Reward: {episode_reward:.4f} \nAvg Reward: {avg_reward:.2f}"
-                + Style.RESET_ALL
-            )
-            print(
-                Fore.MAGENTA
-                + f"Current temperature: {agent.temperature:.4f}"
-                + Style.RESET_ALL
-            )
+            # Imprimir encabezado del juego
+            Logger.print_game_header(agent.n_games)
 
+            # Imprimir métricas principales
+            game_stats = {
+                "score": score,
+                "steps": steps_taken,
+                "record": record,
+                "total_reward": episode_reward,
+                "avg_reward": avg_reward,
+                "loss": loss,
+                "temperature": agent.temperature,
+                "last_record_game": agent.last_record_game,
+                "learning_rate": current_lr,
+                "efficiency_ratio": len(set((p.x, p.y) for p in game.snake)) / len(game.snake) if len(game.snake) > 0 else 0,
+                "steps_per_food": steps_taken / score if score > 0 else steps_taken
+            }
+
+            Logger.print_game_summary(game_stats)
+
+            # Mostrar estado de exploración
             if agent.exploration_phase:
                 agent.set_pathfinding(False)
-                print(
-                    Fore.YELLOW
-                    + f"En fase de exploración: {agent.exploration_games_left} juegos restantes"
-                    + Style.RESET_ALL
-                )
+                Logger.print_exploration_status(True, agent.exploration_games_left)
             else:
                 agent.set_pathfinding(True)
+                Logger.print_exploration_status(False)
 
-            print_weight_norms(agent)
-            print_game_info(
-                episode_reward,
-                score,
-                agent.last_record_game,
-                record,
-                agent.recent_scores,
-            )
+            # Imprimir normas de pesos y forzar actualización en el sistema de eventos
+            from utils.helper import print_weight_norms, event_system, update_game_summary
+            norms = print_weight_norms(agent)
+
+            # Forzar una notificación explícita para asegurar que todos los listeners se actualicen
+            if norms:
+                event_system.notify("weight_norms_updated", norms)
+
+            # Actualizar los parámetros del modelo en shared_data
+            from src.shared_data import update_model_params
+            model_params = {
+                "loss": loss,
+                "temperature": agent.temperature,
+                "pathfinding_enabled": agent.pathfinding_enabled,
+                "exploration_phase": agent.exploration_phase if hasattr(agent, "exploration_phase") else False,
+                "exploration_games_left": agent.exploration_games_left if hasattr(agent, "exploration_games_left") else 0,
+                "learning_rate": current_lr
+            }
+            update_model_params(model_params)
+
+            # También notificar a través del sistema de eventos para compatibilidad
+            event_system.notify("model_params_updated", model_params)
+
+            # Actualizar el resumen del juego
+            summary = update_game_summary(game=game, agent=agent, force_update=True)
+            if summary:
+                event_system.notify("game_summary_updated", summary)
 
             # Evaluación periódica cada 100 juegos
             if agent.n_games % 100 == 0:
-                print(Fore.LIGHTMAGENTA_EX + "\nRealizando evaluación periódica..." + Style.RESET_ALL)
                 eval_results = evaluate_agent(agent, num_episodes=5)
-                print_evaluation_results(eval_results)
+                print_evaluation_results(eval_results, is_periodic=True)
 
                 # Guardar resultados de evaluación
                 if hasattr(agent, 'evaluation_results'):
@@ -636,12 +797,11 @@ def train(max_games: int) -> None:
 
             # Terminate training if max_games reached
             if agent.n_games >= max_games:
-                print(Fore.GREEN + "            Training complete." + Style.RESET_ALL)
+                Logger.print_training_end()
 
                 # Evaluación final
-                print(Fore.LIGHTMAGENTA_EX + "\nRealizando evaluación final..." + Style.RESET_ALL)
                 final_eval = evaluate_agent(agent, num_episodes=10)
-                print_evaluation_results(final_eval)
+                print_evaluation_results(final_eval, is_periodic=False)
                 break
 
 

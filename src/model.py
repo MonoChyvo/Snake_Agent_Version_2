@@ -60,6 +60,8 @@ class DQN(nn.Module):
         pathfinding_enabled=True,
         temperature=None,
     ):
+        from utils.logger import Logger
+
         os.makedirs(folder_path, exist_ok=True)
         checkpoint = {
             "model_state_dict": self.state_dict(),
@@ -75,21 +77,17 @@ class DQN(nn.Module):
         try:
             torch.save(checkpoint, checkpoint_path)
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            print(
-                Fore.CYAN
-                + f"Modelo guardado en {checkpoint_path} el {current_time}"
-                + Style.RESET_ALL
-            )
-            print(Fore.RED + "-" * 60 + Style.RESET_ALL)
-            print("")
+            Logger.print_model_saved(checkpoint_path, current_time)
         except Exception as e:
-            print(Fore.RED + f"Error al guardar el modelo: {e}" + Style.RESET_ALL)
+            Logger.print_error(f"Error al guardar el modelo: {e}")
 
     def load(self, file_name, folder_path="./model_Model"):
+        from utils.logger import Logger
+
         folder_fullpath = folder_path
         if not os.path.exists(folder_fullpath):
-            logging.error(f"Directory {folder_fullpath} does not exist.")
-            return None, None, None, None, None, None
+            Logger.print_error(f"Directorio {folder_fullpath} no existe.")
+            return None, None, None, None, None, None, None
 
         file_path = os.path.join(folder_fullpath, file_name)
         try:
@@ -101,12 +99,19 @@ class DQN(nn.Module):
             last_record_game = checkpoint.get("last_record_game", 0)
             record = checkpoint.get("record", 0)
             pathfinding_enabled = checkpoint.get("pathfinding_enabled", True)
-            print(
-                Fore.LIGHTYELLOW_EX
-                + f"\nUnified checkpoint: '{file_name}' \nLoaded from: {folder_fullpath}. \nTotal games: {n_games}, \nRecord: {record}, \nPathfinding: {'enabled' if pathfinding_enabled else 'disabled'}"
-                + Style.RESET_ALL
-            )
             temperature = checkpoint.get("temperature", None)
+
+            # Imprimir información del modelo cargado
+            Logger.print_section("Modelo Cargado")
+            Logger.print_info(f"Checkpoint: '{file_name}'")
+            Logger.print_info(f"Cargado desde: {folder_fullpath}")
+            Logger.print_metrics_group("Estadísticas del modelo", {
+                "Juegos totales": n_games,
+                "Récord": record,
+                "Pathfinding": 'activado' if pathfinding_enabled else 'desactivado',
+                "Temperatura": temperature
+            })
+
             return (
                 n_games,
                 loss,
@@ -117,10 +122,10 @@ class DQN(nn.Module):
                 temperature,
             )
         except FileNotFoundError:
-            logging.error(f"File {file_path} not found.")
+            Logger.print_error(f"Archivo {file_path} no encontrado.")
             return None, None, None, None, None, None, None
         except Exception as e:
-            logging.error(f"Error loading unified checkpoint '{file_name}': {e}")
+            Logger.print_error(f"Error al cargar el checkpoint '{file_name}': {e}")
             return None, None, None, None, None, None, None
 
 
