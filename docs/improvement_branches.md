@@ -19,11 +19,6 @@ Este documento proporciona una visión general de las diferentes ramas de mejora
    - Mejora de la consistencia de estilo (PEP 8)
    - Aplicación de patrones de diseño apropiados
 
-4. **[Gestión de Dependencias](dependency_management.md)**
-   - Actualización de requirements.txt con versiones específicas
-   - Implementación de scripts para entornos virtuales
-   - Documentación detallada del proceso de instalación
-
 5. **[Mejoras de Seguridad](security_improvements.md)**
    - Validación de datos de entrada
    - Manejo mejorado de excepciones
