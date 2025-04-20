@@ -802,65 +802,126 @@ class SnakeGameAI:
 
         # Renderizar panel de estadísticas solo si hay cambios
         if self.visual_config.get("show_stats_panel", True):
-            # Definir panel_rect ANTES de usarlo
-            panel_x = self.margin_side + self.grid_width_blocks * BLOCK_SIZE + 20
-            panel_y = self.margin_top
-            panel_width = self.stats_panel_width - 30
-            panel_height = self.grid_height_blocks * BLOCK_SIZE
-            panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
-            # Lista de categorías a mostrar (sin 'actions')
-            categories = ["basic", "training", "efficiency", "model"]
-            # Obtener datos centralizados del StatsManager
-            stats = self.stats_manager.get_stats()
-            # Colores mejorados para una visualización más agradable y profesional
-            bg_color = (24, 26, 38)  # Fondo más oscuro y elegante
-            border_color = (60, 120, 180)  # Borde azul sobrio
-            title_color = (210, 225, 255)  # Títulos suaves
-            line_color = (60, 80, 110)  # Líneas divisorias discretas
-            label_color = (180, 200, 230)  # Etiquetas
-            value_color = (90, 200, 255)  # Valores numéricos
-            highlight_color = (255, 195, 90)  # Para récords y modo
-            warning_color = (255, 110, 110)  # Para valores críticos
-
-            # Panel de fondo y borde
-            pygame.draw.rect(self.display, bg_color, panel_rect, border_radius=12)
-            pygame.draw.rect(self.display, border_color, panel_rect, 2, border_radius=12)
-            y_offset = panel_y + 15
-            padding = 15
-            for category in categories:
-                category_title = self._get_category_title(category)
-                cat_title = self.stats_title_font.render(category_title, True, title_color)
-                self.display.blit(cat_title, (panel_x + padding, y_offset))
-                y_offset += 25
-                pygame.draw.line(self.display, line_color,
-                                 (panel_x + padding, y_offset),
-                                 (panel_x + panel_width - padding, y_offset), 1)
-                y_offset += 10
-                if category in stats:
-                    for k, v in stats[category].items():
-                        # Selección de color según tipo de dato
-                        if k in ["Récord", "Último récord (juego)", "Modo de explotación"]:
-                            color = highlight_color
-                        elif k in ["Pathfinding"]:
-                            color = (120, 255, 170) if v == "Activado" else warning_color
-                        elif k in ["Pérdida"] and isinstance(v, float) and v > 3.0:
-                            color = warning_color
-                        elif isinstance(v, float):
-                            color = value_color
-                        else:
-                            color = label_color
-                        if isinstance(v, float):
-                            value_str = f"{v:.4f}" if abs(v) < 100 else f"{v:.2f}"
-                        else:
-                            value_str = str(v)
-                        text = self.stats_font.render(f"{k}: ", True, label_color)
-                        val = self.stats_font.render(value_str, True, color)
-                        self.display.blit(text, (panel_x + padding, y_offset))
-                        self.display.blit(val, (panel_x + padding + text.get_width() + 2, y_offset))
-                        y_offset += 18
-                y_offset += 10
+            self._render_stats_panel()
 
         pygame.display.flip()
+
+    def _render_stats_panel(self):
+        """Renderiza el panel de estadísticas con layout robusto: sin empalmes, con bloques y alineación dinámica según cantidad de elementos."""
+        panel_x = self.margin_side + self.grid_width_blocks * BLOCK_SIZE + 20
+        panel_y = self.margin_top
+        panel_width = self.stats_panel_width - 30
+        panel_height = self.grid_height_blocks * BLOCK_SIZE
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+
+        if not hasattr(self, '_stats_panel_static_cache'):
+            self._stats_panel_static_cache = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+            self._stats_panel_static_cache_dirty = True
+        if not hasattr(self, '_stats_panel_value_cache'):
+            self._stats_panel_value_cache = {}
+            self._stats_panel_value_anim_time = {}
+        ANIMATION_DURATION = 0.35
+        now = time.time()
+
+        # Colores y estilos
+        bg_color = (24, 26, 38)
+        border_color = (60, 120, 180)
+        title_color = (210, 225, 255)
+        line_color = (60, 80, 110)
+        label_color = (180, 200, 230)
+        value_color = (90, 200, 255)
+        highlight_color = (255, 195, 90)
+        warning_color = (255, 110, 110)
+        padding = 18
+        section_spacing = 16
+        value_spacing = 22
+        block_spacing = 22
+        section_line_width = 1
+        font = self.stats_font
+        title_font = self.stats_title_font
+
+        # Obtener dinámicamente la cantidad de valores por categoría
+        stats = self.stats_manager.get_stats()
+        categories = ["basic", "training", "efficiency", "model"]
+        category_titles = [self._get_category_title(c) for c in categories]
+        values_per_category = [len(stats.get(cat, {})) for cat in categories]
+
+        # Calcular offsets para cada bloque para evitar empalmes
+        y_offsets = []
+        y = padding
+        for idx, n_vals in enumerate(values_per_category):
+            y_offsets.append(y)
+            y += title_font.get_height() + section_spacing
+            y += n_vals * value_spacing
+            # Línea divisoria entre bloques
+            if idx < len(categories) - 1:
+                y += block_spacing
+
+        if self._stats_panel_static_cache_dirty:
+            self._stats_panel_static_cache.fill((0, 0, 0, 0))
+            pygame.draw.rect(self._stats_panel_static_cache, bg_color, (0, 0, panel_width, panel_height), border_radius=12)
+            pygame.draw.rect(self._stats_panel_static_cache, border_color, (0, 0, panel_width, panel_height), 2, border_radius=12)
+            for idx, category in enumerate(categories):
+                y_offset = y_offsets[idx]
+                cat_title = title_font.render(category_titles[idx], True, title_color)
+                self._stats_panel_static_cache.blit(cat_title, (padding, y_offset))
+                y_offset += title_font.get_height() + section_spacing - 4
+                # Línea divisoria tras título
+                pygame.draw.line(self._stats_panel_static_cache, line_color,
+                                 (padding, y_offset),
+                                 (panel_width - padding, y_offset), section_line_width)
+                # Línea divisoria entre bloques
+                if idx < len(categories) - 1:
+                    next_block_y = y_offsets[idx+1] - int(block_spacing/2)
+                    pygame.draw.line(self._stats_panel_static_cache, line_color,
+                                     (padding, next_block_y),
+                                     (panel_width - padding, next_block_y), section_line_width)
+            self._stats_panel_static_cache_dirty = False
+
+        self.display.blit(self._stats_panel_static_cache, (panel_x, panel_y))
+
+        # Render dinámico de valores, alineado según layout calculado
+        for idx, category in enumerate(categories):
+            y_offset = panel_y + y_offsets[idx] + title_font.get_height() + section_spacing
+            if category in stats:
+                for k, v in stats[category].items():
+                    if k in ["Récord", "Último récord (juego)", "Modo de explotación"]:
+                        color = highlight_color
+                    elif k in ["Pathfinding"]:
+                        color = (120, 255, 170) if v == "Activado" else warning_color
+                    elif k in ["Pérdida"] and isinstance(v, float) and v > 3.0:
+                        color = warning_color
+                    elif isinstance(v, float):
+                        color = value_color
+                    else:
+                        color = label_color
+                    cache_key = f"{category}:{k}"
+                    prev_val = self._stats_panel_value_cache.get(cache_key, v)
+                    last_anim_time = self._stats_panel_value_anim_time.get(cache_key, now)
+                    if isinstance(v, float) or isinstance(v, int):
+                        if prev_val != v:
+                            self._stats_panel_value_anim_time[cache_key] = now
+                            start_val = prev_val
+                        else:
+                            start_val = prev_val
+                        elapsed = min((now - last_anim_time) / ANIMATION_DURATION, 1.0)
+                        if elapsed < 1.0:
+                            display_val = start_val + (v - start_val) * elapsed
+                        else:
+                            display_val = v
+                        self._stats_panel_value_cache[cache_key] = display_val
+                        if abs(display_val - v) > 1e-3:
+                            self.stats_panel_needs_update = True
+                        value_str = f"{display_val:.4f}" if abs(display_val) < 100 else f"{display_val:.2f}"
+                    else:
+                        value_str = str(v)
+                        self._stats_panel_value_cache[cache_key] = v
+                        self._stats_panel_value_anim_time[cache_key] = now
+                    text = font.render(f"{k}: ", True, label_color)
+                    val = font.render(value_str, True, color)
+                    self.display.blit(text, (panel_x + padding, y_offset))
+                    self.display.blit(val, (panel_x + padding + text.get_width() + 6, y_offset))
+                    y_offset += value_spacing
 
     def _draw_grid(self):
         """Dibuja una cuadrícula en el fondo con coordenadas y mejor visibilidad."""

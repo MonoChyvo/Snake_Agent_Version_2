@@ -1,5 +1,5 @@
 {
-    "visual_mode": "animated",
+    "visual_mode": "simple",
     "show_grid": true,
     "show_heatmap": true,
     "particle_effects": true,
