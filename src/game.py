@@ -20,9 +20,11 @@ Componentes principales:
 import pygame
 import random
 import numpy as np
+import os
+import logging
 from enum import Enum
 from collections import namedtuple
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Tuple, List, Dict, Any, Union
 from utils.config import (
     BLOCK_SIZE, SPEED, BLUE1, BLUE2, RED, WHITE, BLACK, GREEN, YELLOW, GRAY, PURPLE,
     VISUAL_MODE, SHOW_GRID, SHOW_HEATMAP, PARTICLE_EFFECTS, SHADOW_EFFECTS, ANIMATION_SPEED,
@@ -30,12 +32,85 @@ from utils.config import (
 )
 from utils.advanced_pathfinding import AdvancedPathfinding
 
+# Importar funciones de validación si están disponibles
+try:
+    from utils.validation import validate_resource_file
+    validation_available = True
+except ImportError:
+    validation_available = False
+    logging.warning("Módulo de validación no disponible. Se omitirá la validación de recursos.")
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("game.log"),
+        logging.StreamHandler()
+    ]
+)
+
 pygame.init()
 
-try:
-    font = pygame.font.Font("assets/arial.ttf", 25)
-except FileNotFoundError:
-    print("No se encontró 'assets/arial.ttf'. Usando fuente predeterminada.")
+# Función para cargar recursos con validación
+def load_resource(resource_path: str, resource_type: str = "font", size: int = 25) -> Union[pygame.font.Font, pygame.Surface, None]:
+    """
+    Carga un recurso (fuente, imagen) con validación y manejo de excepciones.
+
+    Args:
+        resource_path: Ruta al recurso
+        resource_type: Tipo de recurso ('font' o 'image')
+        size: Tamaño para fuentes o factor de escala para imágenes
+
+    Returns:
+        El recurso cargado o None si ocurre un error
+    """
+    try:
+        # Validar que el archivo existe
+        if not os.path.exists(resource_path):
+            error_msg = f"El archivo de recurso no existe: {resource_path}"
+            logging.error(error_msg)
+            return None
+
+        # Validar el recurso si está disponible la validación
+        if validation_available:
+            try:
+                allowed_extensions = ['.ttf', '.otf'] if resource_type == "font" else ['.png', '.jpg', '.jpeg']
+                validate_resource_file(resource_path, allowed_extensions)
+            except Exception as e:
+                logging.error(f"Error de validación del recurso {resource_path}: {e}")
+                raise
+
+        # Cargar el recurso según su tipo
+        if resource_type == "font":
+            return pygame.font.Font(resource_path, size)
+        elif resource_type == "image":
+            image = pygame.image.load(resource_path).convert_alpha()
+            if size != 1:  # Si se especifica un tamaño diferente de 1, escalar la imagen
+                image = pygame.transform.scale(image, (size, size))
+            return image
+        else:
+            error_msg = f"Tipo de recurso no soportado: {resource_type}"
+            logging.error(error_msg)
+            return None
+
+    except FileNotFoundError:
+        error_msg = f"No se encontró el archivo: {resource_path}"
+        logging.error(error_msg)
+        return None
+    except pygame.error as e:
+        error_msg = f"Error de Pygame al cargar {resource_path}: {e}"
+        logging.error(error_msg)
+        return None
+    except Exception as e:
+        error_msg = f"Error inesperado al cargar {resource_path}: {e}"
+        logging.error(error_msg)
+        return None
+
+# Cargar fuente principal con manejo de errores
+font = load_resource("assets/arial.ttf", "font", 25)
+if font is None:
+    logging.warning("No se pudo cargar 'assets/arial.ttf'. Usando fuente predeterminada.")
     font = pygame.font.SysFont("arial", 25)
 
 
@@ -83,22 +158,21 @@ class SnakeGameAI:
             "shadow_effects": SHADOW_EFFECTS
         }
 
-        # Cargar fuentes
-        try:
-            self.main_font = pygame.font.Font("assets/arial.ttf", 25)
-            self.small_font = pygame.font.Font("assets/arial.ttf", 15)
-        except FileNotFoundError:
-            print("No se encontró 'assets/arial.ttf'. Usando fuente predeterminada.")
+        # Cargar fuentes con validación
+        self.main_font = load_resource("assets/arial.ttf", "font", 25)
+        if self.main_font is None:
+            logging.warning("No se pudo cargar la fuente principal. Usando fuente predeterminada.")
             self.main_font = pygame.font.SysFont("arial", 25)
+
+        self.small_font = load_resource("assets/arial.ttf", "font", 15)
+        if self.small_font is None:
+            logging.warning("No se pudo cargar la fuente pequeña. Usando fuente predeterminada.")
             self.small_font = pygame.font.SysFont("arial", 15)
 
-        # Cargar imagen de manzana
-        try:
-            self.apple_image = pygame.image.load("assets/apple.png").convert_alpha()
-            self.apple_image = pygame.transform.scale(self.apple_image, (BLOCK_SIZE, BLOCK_SIZE))
-        except Exception as e:
-            print("Error loading apple image from assets/apple.png, using fallback drawing.")
-            self.apple_image = None
+        # Cargar imagen de manzana con validación
+        self.apple_image = load_resource("assets/apple.png", "image", BLOCK_SIZE)
+        if self.apple_image is None:
+            logging.warning("No se pudo cargar la imagen de la manzana. Se usará un dibujo alternativo.")
 
         # Crear superficie para el mapa de calor
         self.heatmap_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
