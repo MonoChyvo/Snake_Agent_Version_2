@@ -1,4 +1,5 @@
 import threading
+import copy
 
 class StatsManager:
     """
@@ -32,12 +33,16 @@ class StatsManager:
             temperature = getattr(agent, 'temperature', 0.0) if agent else 0.0
             pathfinding_enabled = getattr(agent, 'pathfinding_enabled', False) if agent else False
             # Obtener learning rate real desde el optimizador si existe
-            learning_rate = 0.001
-            if agent and hasattr(agent, 'trainer') and hasattr(agent.trainer, 'optimizer'):
+            if agent and hasattr(agent, 'learning_rate'):
+                learning_rate = getattr(agent, 'learning_rate', 0.001)
+            elif agent and hasattr(agent, 'trainer') and hasattr(agent.trainer, 'optimizer'):
+                learning_rate = 0.001
                 for param_group in agent.trainer.optimizer.param_groups:
                     if 'lr' in param_group:
                         learning_rate = param_group['lr']
                         break
+            else:
+                learning_rate = 0.001
             mode = getattr(agent, 'mode', 'Pathfinding habilitado') if agent else 'Pathfinding habilitado'
             loss = getattr(agent, 'last_loss', 0.0) if agent else 0.0
             # Acciones (si existen)
@@ -49,8 +54,10 @@ class StatsManager:
             # --- Métricas de eficiencia calculadas en tiempo real ---
             # Usar SIEMPRE los valores del agente si existen para que los tests sean estrictos
             efficiency_ratio = getattr(agent, 'efficiency_ratio', 0.0) if agent else 0.0
-            # Corrige: calcula pasos por comida con datos reales del juego
-            steps_per_food = steps / score if score > 0 else 0.0
+            # Priorizar steps_per_food del agente si existe, si no calcular
+            steps_per_food = getattr(agent, 'steps_per_food', None)
+            if steps_per_food is None:
+                steps_per_food = steps / score if score > 0 else 0.0
             # --- Construir estructura jerárquica esperada por el panel ---
             new_data = {
                 'basic': {
@@ -92,7 +99,7 @@ class StatsManager:
 
     def get_stats(self):
         with self._lock:
-            return self.data.copy()
+            return copy.deepcopy(self.data)
 
     def is_dirty(self):
         return self._dirty
