@@ -2,20 +2,210 @@
 
 import os
 import pandas as pd
-import logging
 from datetime import datetime
 import matplotlib.pyplot as plt
 from colorama import Fore, Style
 import numpy as np
+import time
 from utils.config import ALERT_THRESHOLDS
 
-# Importar funciones de validación si están disponibles
-try:
-    from utils.validation import validate_csv_file, validate_csv_content, safe_csv_load
-    validation_available = True
-except ImportError:
-    validation_available = False
-    logging.warning("Módulo de validación no disponible. Se omitirá la validación de archivos CSV.")
+# Importar el sistema de registro de errores
+from utils.error_logger import event_system_logger, log_error, log_warning, log_info
+
+# Sistema de eventos mejorado para notificar cambios en los datos
+class EventSystem:
+    def __init__(self):
+        self.listeners = {}
+        self.data_cache = {}
+        self.last_update_time = {}
+        self.event_counts = {}  # Contador de eventos para estadísticas
+        log_info(event_system_logger, "EventSystem", "Sistema de eventos inicializado")
+
+    def register_listener(self, event_name, callback):
+        """Registra un listener para un tipo de evento específico."""
+        if event_name not in self.listeners:
+            self.listeners[event_name] = []
+
+        # Evitar duplicados
+        if callback not in self.listeners[event_name]:
+            self.listeners[event_name].append(callback)
+            log_info(event_system_logger, "EventSystem", f"Listener registrado para evento '{event_name}'")
+        else:
+            log_warning(event_system_logger, "EventSystem", f"Intento de registrar un listener duplicado para '{event_name}'")
+
+    def notify(self, event_name, data=None):
+        """Notifica a todos los listeners registrados para un evento específico."""
+        # Actualizar cache y timestamp para todos los eventos, incluso si no hay listeners
+        self.data_cache[event_name] = data
+        self.last_update_time[event_name] = time.time()
+
+        # Actualizar contador de eventos
+        if event_name not in self.event_counts:
+            self.event_counts[event_name] = 0
+        self.event_counts[event_name] += 1
+
+        # Notificar a todos los listeners si existen
+        if event_name in self.listeners:
+            for callback in self.listeners[event_name]:
+                try:
+                    callback(data)
+                except Exception as e:
+                    # Registrar el error en lugar de ignorarlo silenciosamente
+                    log_error(
+                        event_system_logger,
+                        "EventSystem",
+                        f"Error al notificar evento '{event_name}'",
+                        exception=e,
+                        context={"data": str(data)[:100] if data else None}  # Limitar longitud para evitar logs enormes
+                    )
+
+    def get_cached_data(self, event_name):
+        """Obtiene los datos más recientes para un tipo de evento específico."""
+        return self.data_cache.get(event_name, None)
+
+    def get_last_update_time(self, event_name):
+        """Obtiene el timestamp de la última actualización para un tipo de evento específico."""
+        return self.last_update_time.get(event_name, 0)
+
+    def get_event_stats(self):
+        """Obtiene estadísticas sobre los eventos procesados."""
+        return {
+            "event_counts": self.event_counts,
+            "registered_events": list(self.listeners.keys()),
+            "cached_events": list(self.data_cache.keys())
+        }
+
+# Crear instancia global del sistema de eventos
+event_system = EventSystem()
+
+# Variable global para almacenar las normas de pesos más recientes
+latest_weight_norms = {
+    "Capa_linear_01": 0.0,
+    "Capa_linear_02": 0.0,
+    "Capa_linear_03": 0.0
+}
+
+# Variable global para almacenar el resumen del juego más reciente
+latest_game_summary = {
+    "Último récord obtenido en partida": 0,
+    "Puntuaciones recientes": "[]",
+    "Recompensa": 0.0,
+    "Puntuación": 0,
+    "Récord": 0
+}
+
+# Variable global para almacenar los parámetros del modelo más recientes
+latest_model_params = {
+    "loss": 0.0,
+    "temperature": 0.99,
+    "pathfinding_enabled": True,
+    "exploration_phase": False,
+    "exploration_games_left": 0,
+    "learning_rate": 0.001
+}
+
+# Banderas para indicar si los datos han sido actualizados
+weight_norms_updated = False
+game_summary_updated = False
+model_params_updated = False
+
+# Timestamps de las últimas actualizaciones
+last_weight_norms_update = 0
+last_game_summary_update = 0
+last_model_params_update = 0
+
+# Función auxiliar para obtener las normas de pesos más recientes
+def get_weight_norms(force_update=False):
+    """Obtiene las normas de pesos más recientes.
+
+    Args:
+        force_update: Si es True, fuerza una actualización de las normas de pesos.
+
+    Returns:
+        Un diccionario con las normas de pesos más recientes.
+    """
+    global latest_weight_norms, weight_norms_updated, last_weight_norms_update, event_system
+
+    # Verificar si hay datos en el cache del sistema de eventos
+    cached_data = event_system.get_cached_data("weight_norms_updated")
+    if cached_data is not None:
+        # Usar los datos del cache sin imprimir mensajes de depuración
+        return cached_data
+
+    # Si no hay datos en el cache o se fuerza la actualización, intentar obtener los datos
+    if force_update or not weight_norms_updated:
+        # Intentar obtener el agente global
+        agent = globals().get("agent", None)
+        if agent and hasattr(agent, "model"):
+            try:
+                # Llamar a print_weight_norms para actualizar los datos sin mensajes de depuración
+                return print_weight_norms(agent)
+            except Exception:
+                # Ignorar errores silenciosamente para no saturar la consola
+                pass
+
+    # Si no se pudo actualizar, devolver los valores actuales
+    return latest_weight_norms
+
+
+# Función auxiliar para obtener los parámetros del modelo más recientes
+def get_model_params(force_update=False):
+    """Obtiene los parámetros del modelo más recientes.
+
+    Args:
+        force_update: Si es True, fuerza una actualización de los parámetros del modelo.
+
+    Returns:
+        Un diccionario con los parámetros del modelo más recientes.
+    """
+    global latest_model_params, model_params_updated, last_model_params_update, event_system
+
+    # Verificar si hay datos en el cache del sistema de eventos
+    cached_data = event_system.get_cached_data("model_params_updated")
+    if cached_data is not None:
+        # Actualizar la variable global con los datos del cache
+        latest_model_params.update(cached_data)
+        model_params_updated = True
+        last_model_params_update = time.time()
+        return cached_data
+
+    # Si no hay datos en el cache o se fuerza la actualización, intentar obtener los datos
+    if force_update or not model_params_updated:
+        # Intentar obtener el agente global
+        agent = globals().get("agent", None)
+        if agent:
+            try:
+                # Obtener los parámetros del modelo directamente del agente
+                model_params = {
+                    "loss": agent.last_loss if hasattr(agent, "last_loss") else 0.0,
+                    "temperature": agent.temperature if hasattr(agent, "temperature") else 0.99,
+                    "pathfinding_enabled": agent.pathfinding_enabled if hasattr(agent, "pathfinding_enabled") else True,
+                    "exploration_phase": agent.exploration_phase if hasattr(agent, "exploration_phase") else False,
+                    "exploration_games_left": agent.exploration_games_left if hasattr(agent, "exploration_games_left") else 0
+                }
+
+                # Obtener learning rate si está disponible
+                if hasattr(agent, "trainer") and hasattr(agent.trainer, "optimizer"):
+                    for param_group in agent.trainer.optimizer.param_groups:
+                        if 'lr' in param_group:
+                            model_params["learning_rate"] = param_group['lr']
+                            break
+
+                # Actualizar la variable global
+                latest_model_params.update(model_params)
+                model_params_updated = True
+                last_model_params_update = time.time()
+
+                # Notificar a través del sistema de eventos
+                event_system.notify("model_params_updated", model_params)
+
+                return model_params
+            except Exception:
+                # Ignorar errores silenciosamente para no saturar la consola
+                pass
+
+    # Si no se pudo actualizar, devolver los valores actuales
+    return latest_model_params
 
 def plot_training_progress(scores, mean_scores, save_plot=False, save_path="plots", filename="training_progress.png"):
 
@@ -35,9 +225,11 @@ def plot_training_progress(scores, mean_scores, save_plot=False, save_path="plot
             os.makedirs(save_path, exist_ok=True)
             full_path = os.path.join(save_path, filename)
             plt.savefig(full_path)
-            print(f"Plot saved to {full_path}.")
-        except Exception as e:
-            print(f"Error saving plot: {e}")
+            # No imprimir mensajes para no saturar la consola
+            pass
+        except Exception:
+            # Ignorar errores silenciosamente para no saturar la consola
+            pass
 
     plt.show(block=False)
     plt.pause(0.1)
@@ -60,13 +252,15 @@ def log_game_results(agent, score, record, game, avg_loss=None):
     steps_per_food = steps / score if score > 0 else steps
 
     # Calculate action distribution if available
+    from utils.numpy_utils import safe_mean
+
     action_distribution = {}
     if hasattr(game, 'action_history') and len(game.action_history) > 0:
         actions = np.array(game.action_history)
         action_distribution = {
-            'straight_pct': np.mean(actions == 0) * 100 if len(actions) > 0 else 0,
-            'right_pct': np.mean(actions == 1) * 100 if len(actions) > 0 else 0,
-            'left_pct': np.mean(actions == 2) * 100 if len(actions) > 0 else 0,
+            'straight_pct': safe_mean(actions == 0) * 100,
+            'right_pct': safe_mean(actions == 1) * 100,
+            'left_pct': safe_mean(actions == 2) * 100,
         }
 
     # Get model weight statistics if available
@@ -82,8 +276,9 @@ def log_game_results(agent, score, record, game, avg_loss=None):
             # Añadir ratios de pesos para monitoreo
             weight_stats['w2_w1_ratio'] = weight_stats['w2_norm'] / weight_stats['w1_norm'] if weight_stats['w1_norm'] > 0 else 0
             weight_stats['w3_w1_ratio'] = weight_stats['w3_norm'] / weight_stats['w1_norm'] if weight_stats['w1_norm'] > 0 else 0
-        except Exception as e:
-            print(f"Could not get weight norms: {e}")
+        except Exception:
+            # Ignorar errores silenciosamente para no saturar la consola
+            pass
 
     # Create comprehensive game result entry
     game_result = {
@@ -105,13 +300,13 @@ def log_game_results(agent, score, record, game, avg_loss=None):
 
         # Environment Understanding
         "food_distance_stats": {
-            "mean": np.mean(game.food_distances) if hasattr(game, 'food_distances') else None,
+            "mean": safe_mean(game.food_distances) if hasattr(game, 'food_distances') else None,
             "initial_vs_final_ratio": compute_distance_progress(game.food_distances) if hasattr(game, 'food_distances') else None
         },
         "open_space_ratio": game.avg_open_space_ratio if hasattr(game, 'avg_open_space_ratio') else None,
 
         # Temporal Performance
-        "avg_decision_time": np.mean(game.decision_times) if hasattr(game, 'decision_times') else None,
+        "avg_decision_time": safe_mean(game.decision_times) if hasattr(game, 'decision_times') else None,
         "game_duration_seconds": game.game_duration if hasattr(game, 'game_duration') else None,
         "performance_improvement": calculate_improvement_rate(agent) if hasattr(agent, 'recent_scores') else None,
     }
@@ -264,7 +459,6 @@ def update_plots(agent, score, total_score, plot_scores, plot_mean_scores):
         os.makedirs("plots", exist_ok=True)
         plt.savefig("plots/training_progress.png")
         plt.close()  # Cierra la figura para liberar memoria
-        print(f"Plot updated at game {agent.n_games}")
 
     return total_score
 
@@ -286,138 +480,268 @@ def save_checkpoint(agent, loss, filename="model_MARK_IX.pth"):
 
 
 def print_game_info(reward, score, last_record_game, record, recent_scores):
-    # Imprime información del juego
-    print(f"Último récord obtenido en partida: {last_record_game}")
-    print(Fore.CYAN + f"Recent Scores: {recent_scores}" + Style.RESET_ALL)
-    print(Fore.CYAN + f"Reward: {reward:.4f}" + Style.RESET_ALL)
-    print(Fore.MAGENTA + f"Score: {score}" + Style.RESET_ALL)
-    print(Fore.GREEN + f"Record:  {record}" + Style.RESET_ALL)
-    print(Fore.RED + '-'*60 + Style.RESET_ALL)
+    # Imprime información del juego usando el nuevo sistema de logging
+    from utils.logger import Logger
 
+    game_stats = {
+        "score": score,
+        "record": record,
+        "total_reward": reward,
+        "last_record_game": last_record_game,
+        "recent_scores": recent_scores
+    }
+
+    # Se ha eliminado la sección de resumen del juego como solicitado
+    # Los valores importantes se muestran en otras secciones del panel
+
+
+# Importar el sistema de registro de errores para este método
+from utils.error_logger import data_update_logger, log_error, log_warning, log_info
+
+def update_game_summary(game=None, agent=None, force_update=False):
+    """Actualiza y obtiene el resumen del juego más reciente.
+
+    Args:
+        game (Game): Instancia del juego. Si es None, intenta obtener la instancia global.
+        agent (Agent): Instancia del agente. Si es None, intenta obtener la instancia global.
+        force_update (bool): Si es True, fuerza una actualización del resumen.
+
+    Returns:
+        dict: Un diccionario con el resumen del juego más reciente.
+    """
+    global game_summary_updated, last_game_summary_update, latest_game_summary, event_system
+
+    # Verificar si hay datos en el cache del sistema de eventos
+    cached_data = event_system.get_cached_data("game_summary_updated")
+    if cached_data is not None and not force_update:
+        log_info(data_update_logger, "GameSummary", "Usando datos en caché para el resumen del juego")
+        return cached_data
+
+    # Si no se proporcionaron instancias, intentar obtenerlas del contexto global
+    if game is None:
+        game = globals().get("game", None)
+        if game is None:
+            log_warning(data_update_logger, "GameSummary", "No se pudo obtener la instancia del juego del contexto global")
+
+    if agent is None:
+        agent = globals().get("agent", None)
+        if agent is None:
+            log_warning(data_update_logger, "GameSummary", "No se pudo obtener la instancia del agente del contexto global")
+
+    # Si no tenemos las instancias necesarias, devolver los valores actuales
+    if not game or not agent:
+        log_warning(data_update_logger, "GameSummary", "Usando valores por defecto debido a falta de instancias")
+        return latest_game_summary
+
+    # Si tenemos las instancias necesarias, actualizar el resumen
+    try:
+        # Crear un resumen actualizado con valores formateados correctamente
+        # Calcular la recompensa total con mayor precisión
+        total_reward = 0
+        if hasattr(game, "reward_history") and game.reward_history:
+            total_reward = sum(game.reward_history)
+            # Redondear a 4 decimales para mejor visualización
+            total_reward = round(total_reward, 4)
+            log_info(data_update_logger, "GameSummary", f"Recompensa total calculada: {total_reward}")
+        else:
+            log_warning(data_update_logger, "GameSummary", "No se pudo obtener el historial de recompensas")
+
+        # Obtener la puntuación actual
+        current_score = 0
+        if hasattr(game, "score"):
+            current_score = game.score
+            log_info(data_update_logger, "GameSummary", f"Puntuación actual: {current_score}")
+        else:
+            log_warning(data_update_logger, "GameSummary", "No se pudo obtener la puntuación actual")
+
+        # Obtener el valor de last_record_game directamente del agente
+        last_record_game = 0
+        if hasattr(agent, "last_record_game"):
+            last_record_game = agent.last_record_game
+            log_info(data_update_logger, "GameSummary", f"Último récord obtenido: {last_record_game}")
+        else:
+            log_warning(data_update_logger, "GameSummary", "El agente no tiene el atributo 'last_record_game'")
+
+        # Obtener puntuaciones recientes
+        recent_scores = []
+        if hasattr(agent, "recent_scores"):
+            if len(agent.recent_scores) >= 4:
+                recent_scores = agent.recent_scores[-4:]
+            else:
+                recent_scores = agent.recent_scores
+            log_info(data_update_logger, "GameSummary", f"Puntuaciones recientes obtenidas: {len(recent_scores)} elementos")
+        else:
+            log_warning(data_update_logger, "GameSummary", "El agente no tiene el atributo 'recent_scores'")
+
+        # Crear resumen del juego
+        summary = {
+            "Último récord obtenido en partida": last_record_game,
+            "Puntuaciones recientes": str(recent_scores),
+            "Recompensa": total_reward,
+            "Puntuación": current_score,
+            "Récord": game.record if hasattr(game, "record") else 0
+        }
+
+        # Actualizar las variables globales
+        latest_game_summary.update(summary)
+        game_summary_updated = True
+        last_game_summary_update = time.time()
+
+        # Notificar a los listeners a través del sistema de eventos
+        event_system.notify("game_summary_updated", summary)
+        log_info(data_update_logger, "GameSummary", "Resumen del juego actualizado y notificado correctamente")
+
+        return summary
+    except Exception as e:
+        # Registrar el error en lugar de ignorarlo silenciosamente
+        log_error(
+            data_update_logger,
+            "GameSummary",
+            "Error al actualizar el resumen del juego",
+            exception=e,
+            context={
+                "game_has_reward_history": hasattr(game, "reward_history"),
+                "game_has_score": hasattr(game, "score"),
+                "game_has_record": hasattr(game, "record"),
+                "agent_has_last_record_game": hasattr(agent, "last_record_game"),
+                "agent_has_recent_scores": hasattr(agent, "recent_scores")
+            }
+        )
+
+    # Si no se pudo actualizar, devolver los valores actuales
+    return latest_game_summary
+
+
+# Importar el sistema de registro de errores para este método
+from utils.error_logger import data_update_logger, log_error, log_warning, log_info
 
 def print_weight_norms(agent):
-    # Muestra las normas de los pesos para dar seguimiento al entrenamiento
-    w1_norm = agent.model.linear1.weight.data.norm().item()
-    w2_norm = agent.model.linear2.weight.data.norm().item()
-    w3_norm = agent.model.linear3.weight.data.norm().item()
-    print(Fore.CYAN + f"Weight norms: \nCapa_linear_01: {w1_norm:.4f} \nCapa_linear_02: {w2_norm:.4f} \nCapa_linear_03: {w3_norm:.4f}" + Style.RESET_ALL)
-    print(Fore.RED + '-'*60 + Style.RESET_ALL)
+    """Calcula y muestra las normas de los pesos para dar seguimiento al entrenamiento.
+    Actualiza la variable global y notifica a los listeners a través del sistema de eventos.
+
+    Args:
+        agent: Instancia del agente con el modelo cuyos pesos se quieren analizar.
+
+    Returns:
+        dict: Un diccionario con las normas de los pesos de cada capa.
+    """
+    from utils.logger import Logger
+    global latest_weight_norms, weight_norms_updated, last_weight_norms_update, event_system
+
+    # Verificar que el agente es válido
+    if agent is None:
+        log_warning(data_update_logger, "WeightNorms", "Agente no válido proporcionado")
+        return latest_weight_norms
+
+    # Verificar que el agente tiene un modelo
+    if not hasattr(agent, "model"):
+        log_warning(data_update_logger, "WeightNorms", "El agente no tiene un modelo")
+        return latest_weight_norms
+
+    # Método 1: Acceso directo a los atributos del modelo
+    try:
+        # Verificar que el modelo tiene las capas esperadas
+        if not hasattr(agent.model, "linear1") or not hasattr(agent.model, "linear2") or not hasattr(agent.model, "linear3"):
+            raise AttributeError("El modelo no tiene las capas lineales esperadas")
+
+        # Obtener las normas de los pesos
+        w1_norm = float(agent.model.linear1.weight.data.norm().item())
+        w2_norm = float(agent.model.linear2.weight.data.norm().item())
+        w3_norm = float(agent.model.linear3.weight.data.norm().item())
+
+        # Crear diccionario con los valores
+        norms_dict = {
+            "Capa_linear_01": w1_norm,
+            "Capa_linear_02": w2_norm,
+            "Capa_linear_03": w3_norm
+        }
+
+        # Actualizar la variable global con los valores más recientes
+        latest_weight_norms.update(norms_dict)
+        weight_norms_updated = True
+        last_weight_norms_update = time.time()
+
+        # Notificar a los listeners a través del sistema de eventos
+        event_system.notify("weight_norms_updated", norms_dict)
+        log_info(data_update_logger, "WeightNorms", "Normas de pesos calculadas y notificadas correctamente (Método 1)")
+
+        # Imprimir en la consola usando el logger
+        Logger.print_weight_norms(norms_dict)
+        return norms_dict
+    except Exception as e:
+        log_warning(
+            data_update_logger,
+            "WeightNorms",
+            "Error al calcular normas de pesos usando el Método 1, intentando Método 2",
+            context={"error": str(e)}
+        )
+
+        # Método 2: Acceso a través del state_dict
+        try:
+            if not hasattr(agent.model, "state_dict"):
+                raise AttributeError("El modelo no tiene método state_dict")
+
+            state_dict = agent.model.state_dict()
+            if "linear1.weight" not in state_dict or "linear2.weight" not in state_dict or "linear3.weight" not in state_dict:
+                raise KeyError("El state_dict no contiene las claves esperadas para las capas lineales")
+
+            w1_norm = float(state_dict["linear1.weight"].norm().item())
+            w2_norm = float(state_dict["linear2.weight"].norm().item())
+            w3_norm = float(state_dict["linear3.weight"].norm().item())
+
+            norms_dict = {
+                "Capa_linear_01": w1_norm,
+                "Capa_linear_02": w2_norm,
+                "Capa_linear_03": w3_norm
+            }
+
+            latest_weight_norms.update(norms_dict)
+            weight_norms_updated = True
+            last_weight_norms_update = time.time()
+
+            event_system.notify("weight_norms_updated", norms_dict)
+            log_info(data_update_logger, "WeightNorms", "Normas de pesos calculadas y notificadas correctamente (Método 2)")
+
+            return norms_dict
+        except Exception as e:
+            # Registrar el error en lugar de ignorarlo silenciosamente
+            log_error(
+                data_update_logger,
+                "WeightNorms",
+                "Error al calcular normas de pesos",
+                exception=e,
+                context={
+                    "agent_has_model": hasattr(agent, "model"),
+                    "model_has_state_dict": hasattr(agent.model, "state_dict") if hasattr(agent, "model") else False
+                }
+            )
+
+    # Si no se pudieron calcular las normas, devolver los valores actuales
+    log_warning(data_update_logger, "WeightNorms", "Usando valores anteriores de normas de pesos")
+    return latest_weight_norms
 
 
 def save_game_results(agent, df_game_results):
     """
     Guarda los resultados de los juegos en un único archivo CSV centralizado, acumulando los datos.
-    Implementa validación de datos y manejo de excepciones mejorado.
-
-    Args:
-        agent: Agente con información de juegos
-        df_game_results: DataFrame con los resultados a guardar
-
-    Returns:
-        bool: True si los resultados se guardaron correctamente, False en caso contrario
     """
-    try:
-        # Validar que df_game_results sea un DataFrame válido
-        if not isinstance(df_game_results, pd.DataFrame):
-            error_msg = f"Se esperaba un DataFrame, se recibió {type(df_game_results)}"
-            logging.error(error_msg)
-            print(Fore.RED + error_msg + Style.RESET_ALL)
-            return False
+    # Asegurar que el directorio existe
+    os.makedirs("results", exist_ok=True)
+    csv_path = "results/MARK_IX_game_results.csv"
 
-        if df_game_results.empty:
-            logging.warning("El DataFrame de resultados está vacío. No hay datos para guardar.")
-            return True
-
-        # Asegurar que el directorio existe
-        results_dir = "results"
-        os.makedirs(results_dir, exist_ok=True)
-        csv_path = os.path.join(results_dir, "MARK_IX_game_results.csv")
-
-        # Validar columnas requeridas
-        required_columns = ['game_number', 'score']
-        missing_columns = [col for col in required_columns if col not in df_game_results.columns]
-        if missing_columns:
-            error_msg = f"Faltan columnas requeridas en el DataFrame: {missing_columns}"
-            logging.error(error_msg)
-            print(Fore.RED + error_msg + Style.RESET_ALL)
-            return False
-
-        # Si el archivo ya existe, cargarlo y concatenar los nuevos resultados con validación
-        if os.path.exists(csv_path):
-            try:
-                # Usar la función de validación si está disponible
-                if validation_available:
-                    try:
-                        validate_csv_file(csv_path)
-                        df_existing = safe_csv_load(csv_path)
-                    except Exception as e:
-                        logging.error(f"Error de validación del archivo CSV: {e}")
-                        # Si hay error de validación, intentar cargar directamente
-                        df_existing = pd.read_csv(csv_path)
-                else:
-                    # Cargar directamente si no está disponible la validación
-                    df_existing = pd.read_csv(csv_path)
-
-                # Verificar que el DataFrame cargado sea válido
-                if df_existing.empty:
-                    logging.warning(f"El archivo CSV existente {csv_path} está vacío. Se usarán solo los nuevos datos.")
-                    df_combined = df_game_results
-                else:
-                    # Verificar que las columnas coincidan
-                    if set(df_existing.columns) != set(df_game_results.columns):
-                        logging.warning("Las columnas del CSV existente no coinciden con las nuevas. Se intentará combinar de todos modos.")
-
-                    # Concatenar los DataFrames
-                    df_combined = pd.concat([df_existing, df_game_results], ignore_index=True)
-
-                    # Eliminar duplicados si existen
-                    if 'game_number' in df_combined.columns:
-                        df_combined = df_combined.drop_duplicates(subset=['game_number'], keep='last')
-
-            except pd.errors.EmptyDataError:
-                logging.warning(f"El archivo CSV {csv_path} está vacío. Se usarán solo los nuevos datos.")
-                df_combined = df_game_results
-            except pd.errors.ParserError as e:
-                error_msg = f"Error de formato en el CSV existente: {e}. Se usarán solo los nuevos datos."
-                logging.error(error_msg)
-                print(Fore.YELLOW + error_msg + Style.RESET_ALL)
-                df_combined = df_game_results
-            except Exception as e:
-                error_msg = f"Error al cargar CSV existente: {e}. Se usarán solo los nuevos datos."
-                logging.error(error_msg)
-                print(Fore.YELLOW + error_msg + Style.RESET_ALL)
-                df_combined = df_game_results
-        else:
-            df_combined = df_game_results
-
-        # Guardar el CSV con los datos acumulados
+    # Si el archivo ya existe, cargarlo y concatenar los nuevos resultados
+    if os.path.exists(csv_path):
         try:
-            df_combined.to_csv(csv_path, index=False)
+            df_existing = pd.read_csv(csv_path)
+            df_combined = pd.concat([df_existing, df_game_results], ignore_index=True)
+        except Exception:
+            # Ignorar errores silenciosamente para no saturar la consola
+            df_combined = df_game_results
+    else:
+        df_combined = df_game_results
 
-            # Verificar que el archivo se haya guardado correctamente
-            if not os.path.exists(csv_path):
-                raise FileNotFoundError(f"No se pudo guardar el archivo en {csv_path}")
-
-            # Verificar que el archivo no esté vacío
-            if os.path.getsize(csv_path) == 0:
-                raise ValueError(f"El archivo guardado está vacío: {csv_path}")
-
-            success_msg = f"Game results saved to {csv_path} (game {agent.n_games})"
-            logging.info(success_msg)
-            print(Fore.GREEN + success_msg + Style.RESET_ALL)
-            return True
-
-        except Exception as e:
-            error_msg = f"Error al guardar el archivo CSV: {e}"
-            logging.error(error_msg)
-            print(Fore.RED + error_msg + Style.RESET_ALL)
-            return False
-
-    except Exception as e:
-        error_msg = f"Error inesperado al guardar los resultados: {e}"
-        logging.error(error_msg)
-        print(Fore.RED + error_msg + Style.RESET_ALL)
-        return False
+    # Guardar el CSV con los datos acumulados
+    df_combined.to_csv(csv_path, index=False)
 
 
 
@@ -469,7 +793,7 @@ def compute_distance_progress(food_distances):
     final_distance = food_distances[-1]
 
     # Calculate ratio (if initial_distance is 0, avoid division by zero)
-    if initial_distance == 0:
+    if initial_distance == 0 or initial_distance < 0.001:
         return 0
 
     # Lower values are better - indicates closing distance to food
@@ -527,6 +851,8 @@ def calculate_improvement_rate(agent):
     Returns:
         float: Rate of improvement as a percentage or score differential
     """
+    from utils.numpy_utils import safe_mean
+
     if not hasattr(agent, 'recent_scores') or len(agent.recent_scores) < 20:
         return None
 
@@ -537,11 +863,11 @@ def calculate_improvement_rate(agent):
     if not previous_10:  # Not enough history
         return None
 
-    recent_avg = np.mean(recent_10)
-    previous_avg = np.mean(previous_10) if len(previous_10) > 0 else 0
+    recent_avg = safe_mean(recent_10)
+    previous_avg = safe_mean(previous_10)
 
     # Avoid division by zero
-    if previous_avg == 0:
+    if abs(previous_avg) < 0.001:
         previous_avg = 0.1
 
     # Calculate improvement ratio

@@ -1,36 +1,27 @@
 # Snake DQN - Juego de Snake con Aprendizaje por Refuerzo Profundo
 
-<p align="center">
-  <img src="assets/snake_dqn_logo.png" alt="Snake DQN Logo" width="200" height="200" />
-</p>
-
-Este proyecto implementa el clásico juego de Snake utilizando Deep Q-Learning (DQN) para entrenar un agente que aprenda a jugar de forma autónoma. El sistema utiliza técnicas avanzadas de aprendizaje por refuerzo para desarrollar estrategias óptimas de juego.
+Este proyecto implementa el clásico juego de Snake utilizando Deep Q-Learning (DQN) para entrenar un agente que aprende a jugar de forma autónoma. El sistema ahora solo incluye la versión animada, eliminando modos visuales alternativos, pantalla de inicio y configuraciones visuales avanzadas.
 
 ## 💫 Características Principales
 
-- **Implementación Completa del Juego**: Desarrollado con PyGame, con múltiples modos de visualización.
-- **Algoritmo DQN Avanzado**: Incluye mejoras como Double DQN, Prioritized Experience Replay y estrategias de exploración adaptativas.
-- **Visualización en Tiempo Real**: Observa cómo el agente aprende y mejora con el tiempo.
-- **Interfaz Gráfica Mejorada**: Diseño de "estadio" con efectos visuales personalizables.
-- **Sistema de Pathfinding**: Algoritmos A\* y búsqueda de caminos largos para evitar situaciones de bloqueo.
+- **Versión Animada Única**: El juego siempre inicia en modo animado, sin selección de modos ni configuraciones visuales adicionales.
+- **Interfaz Gráfica Limpia**: Diseño simplificado, solo con los elementos necesarios para el entrenamiento y visualización animada.
+- **Sistema de Pathfinding**: Algoritmos A* y búsqueda de caminos largos para evitar bloqueos.
 - **Análisis Detallado**: Seguimiento y visualización de métricas de entrenamiento.
-- **Configuración Persistente**: Guarda tus preferencias visuales entre sesiones.
-- **Seguridad Mejorada**: Validación robusta de datos y manejo avanzado de excepciones.
 
 ## 💻 Requisitos Técnicos
 
 - Python 3.7 o superior
 - Dependencias principales:
-  - PyGame 2.6.1 (motor del juego)
-  - PyTorch 1.13.1 (framework de aprendizaje profundo)
-  - NumPy 1.21.6 (procesamiento numérico)
-  - Pandas 1.3.5 (análisis de datos)
-  - Matplotlib 3.5.3 y Seaborn 0.12.2 (visualización)
-  - Colorama 0.4.4 (salida de consola coloreada)
+  - PyGame >= 2.0.0 (motor del juego)
+  - PyTorch >= 1.7.0 (framework de aprendizaje profundo)
+  - NumPy >= 1.19.0 (procesamiento numérico)
+  - Pandas >= 1.1.0 (análisis de datos)
+  - Matplotlib >= 3.3.0 y Seaborn >= 0.11.0 (visualización)
 
 ## 📍 Instalación
 
-### Opción 1: Usando Scripts de Configuración (Recomendado)
+### Opción 1: Instalación Estándar
 
 1. Clona este repositorio:
 
@@ -39,59 +30,36 @@ Este proyecto implementa el clásico juego de Snake utilizando Deep Q-Learning (
    cd snake-dqn
    ```
 
-2. Ejecuta el script de configuración:
-
-   - En Windows:
-     ```bash
-     setup_env.bat
-     ```
-   - En macOS/Linux:
-     ```bash
-     chmod +x setup_env.sh
-     ./setup_env.sh
-     ```
-
-   Estos scripts crearán un entorno virtual, lo activarán e instalarán todas las dependencias necesarias.
-
-### Opción 2: Instalación Manual
-
-1. Clona este repositorio:
-
-   ```bash
-   git clone https://github.com/tu-usuario/snake-dqn.git
-   cd snake-dqn
-   ```
-
-2. Crea y activa un entorno virtual (recomendado):
-
-   - En Windows:
-     ```bash
-     python -m venv venv
-     venv\Scripts\activate
-     ```
-   - En macOS/Linux:
-     ```bash
-     python3 -m venv venv
-     source venv/bin/activate
-     ```
-
-3. Instala las dependencias:
-
+2. Instala las dependencias:
    ```bash
    pip install -r requirements.txt
    ```
 
-   El archivo requirements.txt incluye todas las dependencias necesarias, con comentarios claros sobre cuáles son esenciales y cuáles son opcionales. Puedes editar este archivo para descomentar las dependencias adicionales que necesites.
+### Opción 2: Usando un Entorno Virtual (Recomendado)
 
-### Verificación del Entorno
+1. Clona el repositorio y crea un entorno virtual:
 
-Para verificar que tu entorno está configurado correctamente:
+   ```bash
+   git clone https://github.com/tu-usuario/snake-dqn.git
+   cd snake-dqn
+   python -m venv venv
+   ```
 
-```bash
-python check_env.py
-```
+2. Activa el entorno virtual:
 
-Este script comprobará que todas las dependencias estén instaladas con las versiones correctas y que el sistema esté listo para ejecutar el proyecto.
+   - En Windows:
+     ```bash
+     venv\Scripts\activate
+     ```
+   - En macOS/Linux:
+     ```bash
+     source venv/bin/activate
+     ```
+
+3. Instala las dependencias:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ## 🎮 Uso
 
@@ -103,14 +71,8 @@ Para comenzar el entrenamiento del agente:
 python main.py
 ```
 
-Al iniciar, se mostrará una pantalla de configuración donde puedes seleccionar las opciones visuales:
-
-- **Modo Animado**: Visualización completa con efectos gráficos.
-- **Modo Simple**: Renderizado básico para mayor rendimiento.
-
 ### Controles Durante el Entrenamiento
 
-- **V**: Alterna entre modo visual animado y simple.
 - **P**: Activa/desactiva el sistema de pathfinding.
 - **S**: Cambia el tamaño de la ventana (pequeño, mediano, grande).
 
@@ -136,24 +98,21 @@ Los resultados se guardan en las carpetas `plots/` y `results/`.
 
 ```
 snake_dqn/
-├── assets/            # Recursos gráficos y fuentes
-├── docs/              # Documentación adicional
-├── model_Model/       # Modelos guardados
-├── plots/             # Gráficos generados
-├── results/           # Resultados y análisis
+├── assets/            # Recursos visuales
+│   ├── apple.png      # Imagen de la manzana
+│   ├── arial.ttf      # Fuente usada en la interfaz
 ├── src/               # Código fuente principal
 │   ├── agent.py       # Agente de aprendizaje
-│   ├── game.py        # Implementación del juego
+│   ├── game.py        # Implementación del juego (solo animado)
 │   ├── model.py       # Arquitectura de la red neuronal
-│   └── start_screen.py # Pantalla de inicio
+│   ├── shared_data.py # Parámetros compartidos
+│   ├── stats_manager.py # Gestión centralizada de estadísticas
 ├── utils/             # Utilidades y herramientas
+│   ├── config.py      # Configuración general (solo animación)
 │   ├── advanced_pathfinding.py  # Algoritmos de búsqueda
-│   ├── config.py                # Configuración y parámetros
-│   ├── config_manager.py        # Gestión de configuración
 │   ├── efficient_memory.py      # Gestión optimizada de memoria
 │   ├── evaluation.py            # Herramientas de evaluación
-│   ├── helper.py                # Funciones auxiliares
-│   └── validation.py            # Validación de datos y seguridad
+│   └── helper.py                # Funciones auxiliares
 ├── clean.py           # Script para limpiar archivos temporales
 ├── inspection.py       # Herramientas de inspección y análisis
 ├── main.py            # Punto de entrada principal
@@ -163,16 +122,11 @@ snake_dqn/
 
 ## ⚙️ Configuración
 
-### Configuración Visual
-
-La configuración visual se puede ajustar a través de la pantalla de inicio y se guarda en `config.json` para futuras sesiones.
-
 ### Parámetros del Sistema
 
 Puedes modificar los parámetros del juego y del entrenamiento en `utils/config.py`:
 
 - **Parámetros de Juego**: Tamaño de bloque, velocidad, dimensiones.
-- **Parámetros Visuales**: Efectos, colores, animaciones.
 - **Hiperparámetros de DQN**: Tasa de aprendizaje, factor de descuento, tamaño de lote.
 - **Parámetros de Exploración**: Temperatura, decaimiento, fases de exploración.
 - **Gestión de Memoria**: Tamaño del búfer, umbrales de poda.
@@ -201,14 +155,61 @@ El sistema incluye herramientas para monitorear y analizar el rendimiento:
 - **Alertas Automáticas**: Detecta problemas potenciales durante el entrenamiento.
 - **Evaluación Periódica**: Prueba el rendimiento del agente en escenarios controlados.
 
+## 📂 Panel de Estadísticas: Integración, Cobertura y Pruebas
+
+### Arquitectura y Funcionamiento
+
+El **panel de estadísticas** está gestionado por la clase `StatsManager`, que centraliza la recolección, actualización y notificación de cambios en las métricas del juego y del agente. El panel se refresca de manera eficiente gracias a un sistema de eventos y un dirty flag, asegurando que solo se actualice cuando hay cambios reales en los datos.
+
+#### Métricas cubiertas:
+- **Básicas:** Puntuación, Récord, Pasos
+- **Eficiencia:** Ratio de eficiencia, Pasos por comida
+- **Acciones:** Recto %, Derecha %, Izquierda %
+- **Entrenamiento:** Recompensa media, Último récord (juego)
+- **Modelo:** Pérdida, Temperatura, Learning rate, Pathfinding, Modo de explotación
+
+#### Flujo de integración
+1. El juego y el agente actualizan sus métricas internas.
+2. `StatsManager` detecta cualquier cambio relevante (comparación profunda por categoría).
+3. Si hay cambios, activa el dirty flag y notifica a la UI mediante el sistema de eventos.
+4. El panel de estadísticas se refresca solo cuando el dirty flag está activo, mostrando siempre la información más reciente y precisa.
+
+### Pruebas Unitarias y de Integración
+
+El archivo `test_stats_event_system.py` incluye **tests exhaustivos** para cada grupo de métricas y para la integración completa del panel:
+- Cada test verifica que el valor mostrado en el panel corresponde al valor actualizado en el juego o el agente.
+- Se comprueba que el dirty flag y la notificación de eventos funcionan correctamente.
+- El test de integración simula el ciclo completo: actualización de métrica, refresco del panel y verificación de la visualización.
+
+#### Ejecución de las pruebas
+
+Para validar que todo el panel y el sistema de eventos funcionan correctamente:
+
+```bash
+python -m unittest test_stats_event_system.py
+```
+
+Si todos los tests pasan (`OK`), puedes estar seguro de que la integración entre el panel, el sistema de eventos y el backend es robusta y funcional.
+
+### Validación manual en la interfaz
+
+1. Ejecuta el juego normalmente:
+   ```bash
+   python main.py
+   ```
+2. Observa el panel de estadísticas: cada vez que cambies una métrica (por ejemplo, al superar un récord), el valor debe actualizarse automáticamente y sin retrasos.
+3. Si detectas un valor incorrecto, ejecuta nuevamente los tests para aislar el problema.
+
+---
+
+**¡Con esta arquitectura y cobertura de pruebas, puedes confiar en la precisión y eficiencia del panel de estadísticas, tanto a nivel interno como visual!**
+
 ## 📝 Documentación Adicional
 
 Para más detalles sobre la arquitectura y el diseño del sistema, consulta los archivos en la carpeta `docs/`:
 
 - [Arquitectura del Sistema](docs/architecture.md)
 - [Manual de Usuario](docs/user_manual.md)
-- [Mejoras de Seguridad](docs/security_improvements.md)
-- [Implementación de Seguridad](docs/security_implementation.md)
 
 ## 💬 Contribuciones
 
@@ -219,18 +220,6 @@ Las contribuciones son bienvenidas. Si deseas contribuir:
 3. Realiza tus cambios y haz commit (`git commit -m 'Añadir nueva funcionalidad'`)
 4. Sube los cambios a tu fork (`git push origin feature/nueva-funcionalidad`)
 5. Abre un Pull Request
-
-## 🔐 Seguridad
-
-El proyecto implementa varias capas de seguridad para garantizar la robustez y estabilidad:
-
-- **Validación de Entrada**: Verificación exhaustiva de todos los datos externos.
-- **Manejo de Excepciones**: Recuperación elegante de errores en áreas críticas.
-- **Registro de Seguridad**: Seguimiento detallado de eventos y errores.
-- **Validación de Recursos**: Verificación de integridad de archivos cargados.
-- **Protección contra Datos Malformados**: Prevención de fallos por datos corruptos.
-
-Para más detalles, consulta la [documentación de seguridad](docs/security_implementation.md).
 
 ## 🔒 Licencia
 

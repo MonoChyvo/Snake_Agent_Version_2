@@ -27,15 +27,6 @@ import torch.optim as optim
 import torch.nn.functional as F
 from colorama import Fore, Style
 from datetime import datetime
-from typing import Dict, Any, List, Tuple, Optional, Union
-
-# Importar funciones de validación
-try:
-    from utils.validation import validate_model_file, validate_model_content, safe_model_load
-    validation_available = True
-except ImportError:
-    validation_available = False
-    logging.warning("Módulo de validación no disponible. Se omitirá la validación de modelos.")
 
 # Configure logging if it has not been set up
 logging.basicConfig(
@@ -59,171 +50,67 @@ class DQN(nn.Module):
 
     def save(
         self,
-        file_name: str,
-        folder_path: str = "./model_Model",
-        n_games: int = 0,
-        optimizer: Any = None,
-        loss: Optional[float] = None,
-        last_record_game: Optional[int] = None,
-        record: Optional[int] = None,
-        pathfinding_enabled: bool = True,
-        temperature: Optional[float] = None,
-    ) -> bool:
-        """
-        Guarda el modelo en un archivo con validación y manejo de excepciones mejorado.
+        file_name,
+        folder_path="./model_Model",
+        n_games=0,
+        optimizer=None,
+        loss=None,
+        last_record_game=None,
+        record=None,
+        pathfinding_enabled=True,
+        temperature=None,
+    ):
+        from utils.logger import Logger
 
-        Args:
-            file_name: Nombre del archivo para guardar el modelo
-            folder_path: Ruta de la carpeta donde guardar el modelo
-            n_games: Número de juegos completados
-            optimizer: Estado del optimizador
-            loss: Valor de pérdida actual
-            last_record_game: Último juego donde se estableció un récord
-            record: Puntuación récord actual
-            pathfinding_enabled: Si el pathfinding está habilitado
-            temperature: Valor de temperatura actual
-
-        Returns:
-            bool: True si el modelo se guardó correctamente, False en caso contrario
-        """
+        os.makedirs(folder_path, exist_ok=True)
+        checkpoint = {
+            "model_state_dict": self.state_dict(),
+            "n_games": n_games,
+            "optimizer_state_dict": optimizer,
+            "loss": loss,
+            "last_record_game": last_record_game,
+            "record": record,
+            "pathfinding_enabled": pathfinding_enabled,
+            "temperature": temperature,
+        }
+        checkpoint_path = os.path.join(folder_path, file_name)
         try:
-            # Validar parámetros de entrada
-            if not isinstance(file_name, str) or not file_name:
-                raise ValueError("El nombre del archivo no puede estar vacío")
-
-            if not isinstance(folder_path, str):
-                raise ValueError("La ruta de la carpeta debe ser una cadena de texto")
-
-            if not file_name.endswith('.pth'):
-                file_name += '.pth'  # Asegurar que tenga la extensión correcta
-
-            # Crear directorio si no existe
-            os.makedirs(folder_path, exist_ok=True)
-
-            # Preparar el checkpoint con validación de tipos
-            checkpoint = {
-                "model_state_dict": self.state_dict(),
-                "n_games": int(n_games) if n_games is not None else 0,
-                "optimizer_state_dict": optimizer,
-                "loss": float(loss) if loss is not None else None,
-                "last_record_game": int(last_record_game) if last_record_game is not None else 0,
-                "record": int(record) if record is not None else 0,
-                "pathfinding_enabled": bool(pathfinding_enabled),
-                "temperature": float(temperature) if temperature is not None else None,
-            }
-
-            # Validar el contenido del checkpoint si está disponible la validación
-            if validation_available:
-                try:
-                    validate_model_content(checkpoint)
-                except Exception as e:
-                    logging.error(f"Error de validación del checkpoint: {e}")
-                    raise
-
-            # Guardar el modelo
-            checkpoint_path = os.path.join(folder_path, file_name)
             torch.save(checkpoint, checkpoint_path)
-
-            # Verificar que el archivo se haya guardado correctamente
-            if not os.path.exists(checkpoint_path):
-                raise FileNotFoundError(f"No se pudo guardar el archivo en {checkpoint_path}")
-
-            # Verificar que el archivo no esté vacío
-            if os.path.getsize(checkpoint_path) == 0:
-                raise ValueError(f"El archivo guardado está vacío: {checkpoint_path}")
-
-            # Registrar éxito
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            success_msg = f"Modelo guardado en {checkpoint_path} el {current_time}"
-            logging.info(success_msg)
-            print(Fore.CYAN + success_msg + Style.RESET_ALL)
-            print(Fore.RED + "-" * 60 + Style.RESET_ALL)
-            print("")
-            return True
-
-        except ValueError as e:
-            error_msg = f"Error de validación al guardar el modelo: {e}"
-            logging.error(error_msg)
-            print(Fore.RED + error_msg + Style.RESET_ALL)
-            return False
-        except FileNotFoundError as e:
-            error_msg = f"Error de archivo al guardar el modelo: {e}"
-            logging.error(error_msg)
-            print(Fore.RED + error_msg + Style.RESET_ALL)
-            return False
+            Logger.print_model_saved(checkpoint_path, current_time)
         except Exception as e:
-            error_msg = f"Error inesperado al guardar el modelo: {e}"
-            logging.error(error_msg)
-            print(Fore.RED + error_msg + Style.RESET_ALL)
-            return False
+            Logger.print_error(f"Error al guardar el modelo: {e}")
 
-    def load(self, file_name: str, folder_path: str = "./model_Model") -> Tuple[Optional[int], Optional[float], Any, Optional[int], Optional[int], Optional[bool], Optional[float]]:
-        """
-        Carga un modelo desde un archivo con validación y manejo de excepciones mejorado.
+    def load(self, file_name, folder_path="./model_Model"):
+        from utils.logger import Logger
 
-        Args:
-            file_name: Nombre del archivo del modelo a cargar
-            folder_path: Ruta de la carpeta donde se encuentra el modelo
+        folder_fullpath = folder_path
+        if not os.path.exists(folder_fullpath):
+            Logger.print_error(f"Directorio {folder_fullpath} no existe.")
+            return None, None, None, None, None, None, None
 
-        Returns:
-            Tuple: (n_games, loss, optimizer_state_dict, last_record_game, record, pathfinding_enabled, temperature)
-                   o (None, None, None, None, None, None, None) si ocurre un error
-        """
+        file_path = os.path.join(folder_fullpath, file_name)
         try:
-            # Validar parámetros de entrada
-            if not isinstance(file_name, str) or not file_name:
-                raise ValueError("El nombre del archivo no puede estar vacío")
-
-            if not isinstance(folder_path, str):
-                raise ValueError("La ruta de la carpeta debe ser una cadena de texto")
-
-            # Asegurar que el archivo tenga la extensión correcta
-            if not file_name.endswith('.pth'):
-                file_name += '.pth'
-
-            # Verificar que el directorio existe
-            folder_fullpath = folder_path
-            if not os.path.exists(folder_fullpath):
-                error_msg = f"El directorio {folder_fullpath} no existe"
-                logging.error(error_msg)
-                raise FileNotFoundError(error_msg)
-
-            # Construir la ruta completa del archivo
-            file_path = os.path.join(folder_fullpath, file_name)
-
-            # Validar el archivo si está disponible la validación
-            if validation_available:
-                try:
-                    validate_model_file(file_path)
-                    checkpoint = safe_model_load(file_path)
-                except Exception as e:
-                    logging.error(f"Error de validación del archivo de modelo: {e}")
-                    raise
-            else:
-                # Si no está disponible la validación, cargar directamente
-                if not os.path.exists(file_path):
-                    raise FileNotFoundError(f"El archivo {file_path} no existe")
-                checkpoint = torch.load(file_path)
-
-            # Cargar el estado del modelo
-            if "model_state_dict" not in checkpoint:
-                raise ValueError(f"El archivo {file_path} no contiene un estado de modelo válido")
-
+            checkpoint = torch.load(file_path)
             self.load_state_dict(checkpoint["model_state_dict"])
-
-            # Extraer valores con validación de tipos
-            n_games = int(checkpoint.get("n_games", 0))
-            loss = float(checkpoint.get("loss", 0)) if checkpoint.get("loss") is not None else None
+            n_games = checkpoint.get("n_games", 0)
+            loss = checkpoint.get("loss", None)
             optimizer_state_dict = checkpoint.get("optimizer_state_dict", None)
-            last_record_game = int(checkpoint.get("last_record_game", 0))
-            record = int(checkpoint.get("record", 0))
-            pathfinding_enabled = bool(checkpoint.get("pathfinding_enabled", True))
-            temperature = float(checkpoint.get("temperature", 0)) if checkpoint.get("temperature") is not None else None
+            last_record_game = checkpoint.get("last_record_game", 0)
+            record = checkpoint.get("record", 0)
+            pathfinding_enabled = checkpoint.get("pathfinding_enabled", True)
+            temperature = checkpoint.get("temperature", None)
 
-            # Registrar éxito
-            success_msg = f"\nUnified checkpoint: '{file_name}' \nLoaded from: {folder_fullpath}. \nTotal games: {n_games}, \nRecord: {record}, \nPathfinding: {'enabled' if pathfinding_enabled else 'disabled'}"
-            logging.info(f"Modelo cargado correctamente: {file_path}")
-            print(Fore.LIGHTYELLOW_EX + success_msg + Style.RESET_ALL)
+            # Imprimir información del modelo cargado
+            Logger.print_section("Modelo Cargado")
+            Logger.print_info(f"Checkpoint: '{file_name}'")
+            Logger.print_info(f"Cargado desde: {folder_fullpath}")
+            Logger.print_metrics_group("Estadísticas del modelo", {
+                "Juegos totales": n_games,
+                "Récord": record,
+                "Pathfinding": 'activado' if pathfinding_enabled else 'desactivado',
+                "Temperatura": temperature
+            })
 
             return (
                 n_games,
@@ -234,29 +121,11 @@ class DQN(nn.Module):
                 pathfinding_enabled,
                 temperature,
             )
-
-        except FileNotFoundError as e:
-            error_msg = f"Archivo no encontrado: {e}"
-            logging.error(error_msg)
-            print(Fore.RED + error_msg + Style.RESET_ALL)
+        except FileNotFoundError:
+            Logger.print_error(f"Archivo {file_path} no encontrado.")
             return None, None, None, None, None, None, None
-
-        except ValueError as e:
-            error_msg = f"Error de validación al cargar el modelo: {e}"
-            logging.error(error_msg)
-            print(Fore.RED + error_msg + Style.RESET_ALL)
-            return None, None, None, None, None, None, None
-
-        except torch.serialization.pickle.UnpicklingError as e:
-            error_msg = f"El archivo no es un modelo PyTorch válido: {e}"
-            logging.error(error_msg)
-            print(Fore.RED + error_msg + Style.RESET_ALL)
-            return None, None, None, None, None, None, None
-
         except Exception as e:
-            error_msg = f"Error inesperado al cargar el modelo '{file_name}': {e}"
-            logging.error(error_msg)
-            print(Fore.RED + error_msg + Style.RESET_ALL)
+            Logger.print_error(f"Error al cargar el checkpoint '{file_name}': {e}")
             return None, None, None, None, None, None, None
 
 

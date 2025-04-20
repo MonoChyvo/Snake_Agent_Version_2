@@ -33,13 +33,10 @@ STADIUM_MARGIN_SIDE = 50  # Margen lateral para centrar la cuadrícula
 STADIUM_MARGIN_BOTTOM = 30  # Margen inferior
 
 # Configuración de visualización
-VISUAL_MODE = "animated"  # Opciones: "animated", "simple"
-SHOW_GRID = True  # Mostrar cuadrícula en el fondo
-SHOW_HEATMAP = True  # Mostrar mapa de calor de posiciones visitadas
-PARTICLE_EFFECTS = True  # Efectos de partículas al comer comida
-SHADOW_EFFECTS = False  # Efectos de sombra para la serpiente (desactivado por defecto)
+# Solo se conserva lo relevante para la versión animada
 ANIMATION_SPEED = 1.0  # Velocidad de animación (1.0 = normal)
-HEATMAP_OPACITY = 30  # Opacidad del mapa de calor (0-255)
+
+# Eliminados: VISUAL_MODE, SHOW_GRID, SHOW_HEATMAP, PARTICLE_EFFECTS, SHADOW_EFFECTS, HEATMAP_OPACITY
 
 # Parámetros de gestión de memoria
 MAX_MEMORY = 300_000
@@ -57,7 +54,7 @@ TAU = 0.005  # Tasa de actualización de la red objetivo
 TEMPERATURE = 0.99  # Temperatura inicial
 MIN_TEMPERATURE = 0.15  # Temperatura mínima
 PREV_LOSS = 0.0  # Pérdida previa
-DECAY_RATE = 0.9995  # Tasa de decaimiento
+DECAY_RATE = 0.9992  # Tasa de decaimiento
 
 # Configuración de fase de exploración
 EXPLORATION_PHASE = False  # Activar/desactivar fase de exploración

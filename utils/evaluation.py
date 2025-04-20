@@ -68,28 +68,29 @@ def evaluate_agent(agent, num_episodes=10, seed=42):
     agent.game = original_game
     agent.pathfinding_enabled = original_pathfinding
 
-    # Calcular métricas
+    # Importar funciones seguras
+    from utils.numpy_utils import safe_mean, safe_std
+
+    # Calcular métricas de forma segura
     results = {
-        'mean_score': np.mean(evaluation_scores),
-        'max_score': np.max(evaluation_scores),
-        'min_score': np.min(evaluation_scores),
-        'mean_length': np.mean(evaluation_lengths),
-        'mean_steps': np.mean(evaluation_steps),
-        'mean_reward': np.mean(evaluation_rewards),
-        'std_score': np.std(evaluation_scores),
+        'mean_score': safe_mean(evaluation_scores),
+        'max_score': max(evaluation_scores) if evaluation_scores else 0,
+        'min_score': min(evaluation_scores) if evaluation_scores else 0,
+        'mean_length': safe_mean(evaluation_lengths),
+        'mean_steps': safe_mean(evaluation_steps),
+        'mean_reward': safe_mean(evaluation_rewards),
+        'std_score': safe_std(evaluation_scores),
         'episodes': num_episodes
     }
 
     return results
 
-def print_evaluation_results(results):
+def print_evaluation_results(results, is_periodic=True):
     """Imprime los resultados de la evaluación de manera formateada"""
-    print("\n===== EVALUACIÓN DEL AGENTE =====")
-    print(f"Episodios evaluados: {results['episodes']}")
-    print(f"Puntuación media: {results['mean_score']:.2f} ± {results['std_score']:.2f}")
-    print(f"Puntuación máxima: {results['max_score']}")
-    print(f"Puntuación mínima: {results['min_score']}")
-    print(f"Longitud media: {results['mean_length']:.2f}")
-    print(f"Pasos medios: {results['mean_steps']:.2f}")
-    print(f"Recompensa media: {results['mean_reward']:.2f}")
-    print("================================\n")
+    from utils.logger import Logger
+
+    # Imprimir encabezado de evaluación
+    Logger.print_evaluation_header(is_periodic)
+
+    # Imprimir resultados
+    Logger.print_evaluation_results(results)
