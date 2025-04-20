@@ -193,13 +193,7 @@ class StartScreen:
             self.particle_effects
         )
 
-        self.shadows_checkbox = Checkbox(
-            right_column_x,
-            checkbox_y_start + checkbox_spacing,
-            checkbox_size,
-            "Efectos de Sombra",
-            self.shadow_effects
-        )
+        # Opción de sombras eliminada
 
         # Crear fuentes
         try:
@@ -245,14 +239,14 @@ class StartScreen:
                     "show_grid": self.grid_checkbox.is_checked,
                     "show_heatmap": self.heatmap_checkbox.is_checked,
                     "particle_effects": self.particles_checkbox.is_checked,
-                    "shadow_effects": self.shadows_checkbox.is_checked
+                    "shadow_effects": False  # Sombras siempre desactivadas
                 }
 
             # Actualizar checkboxes
             self.grid_checkbox.update(mouse_pos, mouse_click)
             self.heatmap_checkbox.update(mouse_pos, mouse_click)
             self.particles_checkbox.update(mouse_pos, mouse_click)
-            self.shadows_checkbox.update(mouse_pos, mouse_click)
+            # Checkbox de sombras eliminado
 
             # Dibujar pantalla
             self.draw()
@@ -310,7 +304,7 @@ class StartScreen:
         self.grid_checkbox.draw(self.screen)
         self.heatmap_checkbox.draw(self.screen)
         self.particles_checkbox.draw(self.screen)
-        self.shadows_checkbox.draw(self.screen)
+        # Checkbox de sombras eliminado
 
 
 def get_user_config():

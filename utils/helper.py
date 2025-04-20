@@ -2,11 +2,20 @@
 
 import os
 import pandas as pd
+import logging
 from datetime import datetime
 import matplotlib.pyplot as plt
 from colorama import Fore, Style
 import numpy as np
 from utils.config import ALERT_THRESHOLDS
+
+# Importar funciones de validación si están disponibles
+try:
+    from utils.validation import validate_csv_file, validate_csv_content, safe_csv_load
+    validation_available = True
+except ImportError:
+    validation_available = False
+    logging.warning("Módulo de validación no disponible. Se omitirá la validación de archivos CSV.")
 
 def plot_training_progress(scores, mean_scores, save_plot=False, save_path="plots", filename="training_progress.png"):
 
@@ -298,25 +307,117 @@ def print_weight_norms(agent):
 def save_game_results(agent, df_game_results):
     """
     Guarda los resultados de los juegos en un único archivo CSV centralizado, acumulando los datos.
+    Implementa validación de datos y manejo de excepciones mejorado.
+
+    Args:
+        agent: Agente con información de juegos
+        df_game_results: DataFrame con los resultados a guardar
+
+    Returns:
+        bool: True si los resultados se guardaron correctamente, False en caso contrario
     """
-    # Asegurar que el directorio existe
-    os.makedirs("results", exist_ok=True)
-    csv_path = "results/MARK_IX_game_results.csv"
+    try:
+        # Validar que df_game_results sea un DataFrame válido
+        if not isinstance(df_game_results, pd.DataFrame):
+            error_msg = f"Se esperaba un DataFrame, se recibió {type(df_game_results)}"
+            logging.error(error_msg)
+            print(Fore.RED + error_msg + Style.RESET_ALL)
+            return False
 
-    # Si el archivo ya existe, cargarlo y concatenar los nuevos resultados
-    if os.path.exists(csv_path):
-        try:
-            df_existing = pd.read_csv(csv_path)
-            df_combined = pd.concat([df_existing, df_game_results], ignore_index=True)
-        except Exception as e:
-            print(f"Error al cargar CSV existente: {e}")
+        if df_game_results.empty:
+            logging.warning("El DataFrame de resultados está vacío. No hay datos para guardar.")
+            return True
+
+        # Asegurar que el directorio existe
+        results_dir = "results"
+        os.makedirs(results_dir, exist_ok=True)
+        csv_path = os.path.join(results_dir, "MARK_IX_game_results.csv")
+
+        # Validar columnas requeridas
+        required_columns = ['game_number', 'score']
+        missing_columns = [col for col in required_columns if col not in df_game_results.columns]
+        if missing_columns:
+            error_msg = f"Faltan columnas requeridas en el DataFrame: {missing_columns}"
+            logging.error(error_msg)
+            print(Fore.RED + error_msg + Style.RESET_ALL)
+            return False
+
+        # Si el archivo ya existe, cargarlo y concatenar los nuevos resultados con validación
+        if os.path.exists(csv_path):
+            try:
+                # Usar la función de validación si está disponible
+                if validation_available:
+                    try:
+                        validate_csv_file(csv_path)
+                        df_existing = safe_csv_load(csv_path)
+                    except Exception as e:
+                        logging.error(f"Error de validación del archivo CSV: {e}")
+                        # Si hay error de validación, intentar cargar directamente
+                        df_existing = pd.read_csv(csv_path)
+                else:
+                    # Cargar directamente si no está disponible la validación
+                    df_existing = pd.read_csv(csv_path)
+
+                # Verificar que el DataFrame cargado sea válido
+                if df_existing.empty:
+                    logging.warning(f"El archivo CSV existente {csv_path} está vacío. Se usarán solo los nuevos datos.")
+                    df_combined = df_game_results
+                else:
+                    # Verificar que las columnas coincidan
+                    if set(df_existing.columns) != set(df_game_results.columns):
+                        logging.warning("Las columnas del CSV existente no coinciden con las nuevas. Se intentará combinar de todos modos.")
+
+                    # Concatenar los DataFrames
+                    df_combined = pd.concat([df_existing, df_game_results], ignore_index=True)
+
+                    # Eliminar duplicados si existen
+                    if 'game_number' in df_combined.columns:
+                        df_combined = df_combined.drop_duplicates(subset=['game_number'], keep='last')
+
+            except pd.errors.EmptyDataError:
+                logging.warning(f"El archivo CSV {csv_path} está vacío. Se usarán solo los nuevos datos.")
+                df_combined = df_game_results
+            except pd.errors.ParserError as e:
+                error_msg = f"Error de formato en el CSV existente: {e}. Se usarán solo los nuevos datos."
+                logging.error(error_msg)
+                print(Fore.YELLOW + error_msg + Style.RESET_ALL)
+                df_combined = df_game_results
+            except Exception as e:
+                error_msg = f"Error al cargar CSV existente: {e}. Se usarán solo los nuevos datos."
+                logging.error(error_msg)
+                print(Fore.YELLOW + error_msg + Style.RESET_ALL)
+                df_combined = df_game_results
+        else:
             df_combined = df_game_results
-    else:
-        df_combined = df_game_results
 
-    # Guardar el CSV con los datos acumulados
-    df_combined.to_csv(csv_path, index=False)
-    print(f"Game results saved to {csv_path} (game {agent.n_games})")
+        # Guardar el CSV con los datos acumulados
+        try:
+            df_combined.to_csv(csv_path, index=False)
+
+            # Verificar que el archivo se haya guardado correctamente
+            if not os.path.exists(csv_path):
+                raise FileNotFoundError(f"No se pudo guardar el archivo en {csv_path}")
+
+            # Verificar que el archivo no esté vacío
+            if os.path.getsize(csv_path) == 0:
+                raise ValueError(f"El archivo guardado está vacío: {csv_path}")
+
+            success_msg = f"Game results saved to {csv_path} (game {agent.n_games})"
+            logging.info(success_msg)
+            print(Fore.GREEN + success_msg + Style.RESET_ALL)
+            return True
+
+        except Exception as e:
+            error_msg = f"Error al guardar el archivo CSV: {e}"
+            logging.error(error_msg)
+            print(Fore.RED + error_msg + Style.RESET_ALL)
+            return False
+
+    except Exception as e:
+        error_msg = f"Error inesperado al guardar los resultados: {e}"
+        logging.error(error_msg)
+        print(Fore.RED + error_msg + Style.RESET_ALL)
+        return False
 
 
 

@@ -37,7 +37,7 @@ VISUAL_MODE = "animated"  # Opciones: "animated", "simple"
 SHOW_GRID = True  # Mostrar cuadrícula en el fondo
 SHOW_HEATMAP = True  # Mostrar mapa de calor de posiciones visitadas
 PARTICLE_EFFECTS = True  # Efectos de partículas al comer comida
-SHADOW_EFFECTS = True  # Efectos de sombra para la serpiente
+SHADOW_EFFECTS = False  # Efectos de sombra para la serpiente (desactivado por defecto)
 ANIMATION_SPEED = 1.0  # Velocidad de animación (1.0 = normal)
 HEATMAP_OPACITY = 30  # Opacidad del mapa de calor (0-255)
 

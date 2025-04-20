@@ -12,9 +12,11 @@ Componentes principales:
 import pygame
 import random
 import numpy as np
+import os
+import logging
 from enum import Enum
 from collections import namedtuple
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Tuple, List, Dict, Any, Union
 from utils.config import (
     BLOCK_SIZE, SPEED, BLUE1, BLUE2, RED, WHITE, BLACK, GREEN, YELLOW, GRAY, PURPLE,
     VISUAL_MODE, SHOW_GRID, SHOW_HEATMAP, PARTICLE_EFFECTS, SHADOW_EFFECTS, ANIMATION_SPEED,
@@ -27,10 +29,87 @@ import src.game.input_handler as input_handler_module
 import src.game.ui as ui_module
 import src.game.effects as effects_module
 
+# Importar funciones de validación si están disponibles
+try:
+    from utils.validation import validate_resource_file
+    validation_available = True
+except ImportError:
+    validation_available = False
+    logging.warning("Módulo de validación no disponible. Se omitirá la validación de recursos.")
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("game.log"),
+        logging.StreamHandler()
+    ]
+)
+
 # Inicializar pygame
 pygame.init()
 
-# Definir la clase Direction como una enumeración
+# Función para cargar recursos con validación
+def load_resource(resource_path: str, resource_type: str = "font", size: int = 25) -> Union[pygame.font.Font, pygame.Surface, None]:
+    """
+    Carga un recurso (fuente, imagen) con validación y manejo de excepciones.
+
+    Args:
+        resource_path: Ruta al recurso
+        resource_type: Tipo de recurso ('font' o 'image')
+        size: Tamaño para fuentes o factor de escala para imágenes
+
+    Returns:
+        El recurso cargado o None si ocurre un error
+    """
+    try:
+        # Validar que el archivo existe
+        if not os.path.exists(resource_path):
+            error_msg = f"El archivo de recurso no existe: {resource_path}"
+            logging.error(error_msg)
+            return None
+
+        # Validar el recurso si está disponible la validación
+        if validation_available:
+            try:
+                allowed_extensions = ['.ttf', '.otf'] if resource_type == "font" else ['.png', '.jpg', '.jpeg']
+                validate_resource_file(resource_path, allowed_extensions)
+            except Exception as e:
+                logging.error(f"Error de validación del recurso {resource_path}: {e}")
+                raise
+
+        # Cargar el recurso según su tipo
+        if resource_type == "font":
+            return pygame.font.Font(resource_path, size)
+        elif resource_type == "image":
+            image = pygame.image.load(resource_path).convert_alpha()
+            if size != 1:  # Si se especifica un tamaño diferente de 1, escalar la imagen
+                image = pygame.transform.scale(image, (size, size))
+            return image
+        else:
+            error_msg = f"Tipo de recurso no soportado: {resource_type}"
+            logging.error(error_msg)
+            return None
+
+    except FileNotFoundError:
+        error_msg = f"No se encontró el archivo: {resource_path}"
+        logging.error(error_msg)
+        return None
+    except pygame.error as e:
+        error_msg = f"Error de Pygame al cargar {resource_path}: {e}"
+        logging.error(error_msg)
+        return None
+    except Exception as e:
+        error_msg = f"Error inesperado al cargar {resource_path}: {e}"
+        logging.error(error_msg)
+        return None
+
+# Cargar fuente principal con manejo de errores
+font = load_resource("assets/arial.ttf", "font", 25)
+if font is None:
+    logging.warning("No se pudo cargar 'assets/arial.ttf'. Usando fuente predeterminada.")
+    font = pygame.font.SysFont("arial", 25)
 class Direction(Enum):
     RIGHT = 1
     LEFT = 2
@@ -73,6 +152,25 @@ class SnakeGameAI:
             "particle_effects": PARTICLE_EFFECTS,
             "shadow_effects": SHADOW_EFFECTS
         }
+
+        # Cargar fuentes con validación
+        self.main_font = load_resource("assets/arial.ttf", "font", 25)
+        if self.main_font is None:
+            logging.warning("No se pudo cargar la fuente principal. Usando fuente predeterminada.")
+            self.main_font = pygame.font.SysFont("arial", 25)
+
+        self.small_font = load_resource("assets/arial.ttf", "font", 15)
+        if self.small_font is None:
+            logging.warning("No se pudo cargar la fuente pequeña. Usando fuente predeterminada.")
+            self.small_font = pygame.font.SysFont("arial", 15)
+
+        # Cargar imagen de manzana con validación
+        self.apple_image = load_resource("assets/apple.png", "image", BLOCK_SIZE)
+        if self.apple_image is None:
+            logging.warning("No se pudo cargar la imagen de la manzana. Se usará un dibujo alternativo.")
+
+        # Crear superficie para el mapa de calor
+        self.heatmap_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
 
         # Inicializar componentes (después de la inicialización completa)
         self.renderer = None
@@ -586,6 +684,387 @@ class SnakeGameAI:
         # No hay colisión
         return False, None
 
+<<<<<<< HEAD:src/game/core.py
+=======
+    def _update_ui(self):
+        """Actualiza la interfaz gráfica según el modo de visualización seleccionado."""
+        # Llenar toda la pantalla con un color de fondo oscuro
+        self.display.fill((20, 20, 30))
+
+        # Dibujar un rectángulo negro para el área de juego (el estadio)
+        game_area = pygame.Rect(
+            self.margin_side,
+            self.margin_top,
+            self.grid_width_blocks * BLOCK_SIZE,
+            self.grid_height_blocks * BLOCK_SIZE
+        )
+        pygame.draw.rect(self.display, BLACK, game_area)
+
+        # Dibujar un borde para el estadio
+        pygame.draw.rect(self.display, (100, 100, 120), game_area, 3)
+
+        # Dibujar cuadrícula si está habilitada
+        if self.visual_config["show_grid"]:
+            self._draw_grid()
+
+        # Dibujar mapa de calor si está habilitado
+        if self.visual_config["show_heatmap"]:
+            self._draw_heatmap()
+
+        # Elegir el método de renderizado según el modo visual
+        if self.visual_config["visual_mode"] == "animated":
+            self._render_animated()
+        else:
+            self._render_simple()
+
+        # Renderizar información de juego (común para ambos modos)
+        self._render_game_info()
+
+        pygame.display.flip()
+
+    def _draw_grid(self):
+        """Dibuja una cuadrícula en el fondo con coordenadas y mejor visibilidad."""
+        # Colores mejorados para mejor contraste
+        grid_color = (60, 60, 80)  # Gris azulado más visible
+        highlight_color = (100, 100, 150)  # Color destacado más brillante
+        border_color = (120, 120, 180)  # Color para el borde exterior
+        text_color = (180, 180, 220)  # Color para las coordenadas
+
+        # Calcular el número exacto de bloques horizontales y verticales
+        grid_width, grid_height = self.grid_size
+
+        # Calcular la posición inicial de la cuadrícula (con márgenes)
+        grid_start_x = self.margin_side
+        grid_start_y = self.margin_top
+        grid_end_x = grid_start_x + grid_width * BLOCK_SIZE
+        grid_end_y = grid_start_y + grid_height * BLOCK_SIZE
+
+        # Dibujar solo las líneas necesarias para el grid exacto
+        for i in range(grid_width + 1):  # +1 para incluir la línea final
+            x = grid_start_x + i * BLOCK_SIZE
+            # Línea normal o destacada según posición
+            line_color = highlight_color if i % 5 == 0 else grid_color
+            line_width = 2 if i % 5 == 0 else 1
+            pygame.draw.line(self.display, line_color, (x, grid_start_y), (x, grid_end_y), line_width)
+
+            # Añadir coordenadas X cada 5 bloques
+            if i % 5 == 0:
+                # Usar una fuente más pequeña para las coordenadas
+                try:
+                    coord_font = pygame.font.SysFont("arial", 10)
+                    coord_text = coord_font.render(str(i), True, text_color)
+                    self.display.blit(coord_text, (x + 2, grid_start_y + 2))
+                except:
+                    pass  # Si hay error con la fuente, omitir coordenadas
+
+        # Líneas horizontales con coordenadas
+        for i in range(grid_height + 1):  # +1 para incluir la línea final
+            y = grid_start_y + i * BLOCK_SIZE
+            # Línea normal o destacada según posición
+            line_color = highlight_color if i % 5 == 0 else grid_color
+            line_width = 2 if i % 5 == 0 else 1
+            pygame.draw.line(self.display, line_color, (grid_start_x, y), (grid_end_x, y), line_width)
+
+            # Añadir coordenadas Y cada 5 bloques
+            if i % 5 == 0:
+                try:
+                    coord_font = pygame.font.SysFont("arial", 10)
+                    coord_text = coord_font.render(str(i), True, text_color)
+                    self.display.blit(coord_text, (grid_start_x + 2, y + 2))
+                except:
+                    pass  # Si hay error con la fuente, omitir coordenadas
+
+        # Dibujar indicadores de cuadrante en las esquinas para mejor orientación
+        try:
+            corner_font = pygame.font.SysFont("arial", 12, bold=True)
+            # Esquina superior izquierda
+            corner_text = corner_font.render("(0,0)", True, (200, 200, 255))
+            self.display.blit(corner_text, (grid_start_x + 5, grid_start_y + 5))
+
+            # Esquina inferior derecha
+            max_x = grid_width - 1
+            max_y = grid_height - 1
+            corner_text = corner_font.render(f"({max_x},{max_y})", True, (200, 200, 255))
+            text_width = corner_text.get_width()
+            self.display.blit(corner_text, (grid_end_x - text_width - 5, grid_end_y - 20))
+        except:
+            pass  # Si hay error con la fuente, omitir coordenadas
+
+    def _draw_heatmap(self):
+        """Dibuja un mapa de calor de las posiciones visitadas."""
+        # Limpiar la superficie del mapa de calor
+        self.heatmap_surface.fill((0, 0, 0, 0))
+
+        # Encontrar el valor máximo en el mapa de visitas para normalizar
+        max_visits = np.max(self.visit_map) if np.any(self.visit_map) else 1
+
+        # Dibujar rectángulos coloreados según la frecuencia de visitas
+        for x in range(self.grid_size[0]):
+            for y in range(self.grid_size[1]):
+                visits = self.visit_map[x, y]
+                if visits > 0:
+                    # Normalizar y calcular color (usar un color más sutil)
+                    intensity = min(visits / max_visits, 1.0)
+
+                    # Usar la opacidad configurada en config.py
+                    alpha = int(HEATMAP_OPACITY * intensity)  # Transparencia configurable
+
+                    # Usar colores diferentes según la intensidad para mejor visualización
+                    if intensity < 0.3:
+                        # Baja intensidad: azul claro
+                        color = (50, 100, 200, alpha)
+                    elif intensity < 0.7:
+                        # Media intensidad: púrpura
+                        color = (100, 50, 200, alpha)
+                    else:
+                        # Alta intensidad: rojo
+                        color = (200, 50, 50, alpha)
+
+                    # Hacer los rectángulos más pequeños para no obstruir la visualización
+                    margin = 5
+                    rect = pygame.Rect(
+                        self.margin_side + x * BLOCK_SIZE + margin,
+                        self.margin_top + y * BLOCK_SIZE + margin,
+                        BLOCK_SIZE - (margin * 2),
+                        BLOCK_SIZE - (margin * 2)
+                    )
+
+                    # Dibujar rectángulos con bordes redondeados para un aspecto más suave
+                    pygame.draw.rect(self.heatmap_surface, color, rect, border_radius=4)
+
+        # Aplicar la superficie del mapa de calor a la pantalla principal
+        self.display.blit(self.heatmap_surface, (0, 0))
+
+    def _render_animated(self):
+        """Renderiza el juego con efectos visuales completos."""
+        # Actualizar y renderizar partículas (efecto confeti) si están habilitadas
+        if self.visual_config["particle_effects"]:
+            for particle in self.particles[:]:
+                # Actualizar posición y disminuir lifetime
+                particle['pos'][0] += particle['vel'][0] * ANIMATION_SPEED
+                particle['pos'][1] += particle['vel'][1] * ANIMATION_SPEED
+                particle['lifetime'] -= 1 * ANIMATION_SPEED
+
+                # Dibujar partícula
+                pygame.draw.circle(
+                    self.display,
+                    particle['color'],
+                    (int(particle['pos'][0]), int(particle['pos'][1])),
+                    2
+                )
+
+                if particle['lifetime'] <= 0:
+                    self.particles.remove(particle)
+
+        # Renderizado mejorado de la serpiente con sombra
+        for i, pt in enumerate(self.snake):
+            # Definir el rectángulo del segmento (ajustado a los márgenes del estadio)
+            snake_rect = pygame.Rect(
+                self.margin_side + pt.x,
+                self.margin_top + pt.y,
+                BLOCK_SIZE,
+                BLOCK_SIZE
+            )
+
+            # Código de sombreado eliminado
+
+            # Dibujar el segmento de la serpiente con degradado de color
+            color_factor = 1 - (i / len(self.snake))
+            body_color = (
+                int(30 + 225 * color_factor),
+                int(144 - 39 * color_factor),
+                int(255 - 75 * color_factor),
+            )
+
+            # Verificar si este segmento está involucrado en una colisión
+            is_collision_segment = False
+            if i > 0:  # No verificar la cabeza
+                # Verificar si la cabeza colisiona con este segmento
+                if self.head.x == pt.x and self.head.y == pt.y:
+                    is_collision_segment = True
+
+            # Si es un segmento de colisión, dibujar un borde rojo parpadeante
+            if is_collision_segment:
+                # Efecto parpadeante usando el tiempo
+                flash_intensity = (np.sin(pygame.time.get_ticks() * 0.01) + 1) * 0.5
+                border_color = (255, int(50 * flash_intensity), int(50 * flash_intensity))
+
+                # Dibujar el segmento con un borde destacado
+                pygame.draw.rect(
+                    self.display,
+                    body_color,
+                    snake_rect,
+                    border_radius=BLOCK_SIZE // 2
+                )
+                pygame.draw.rect(
+                    self.display,
+                    border_color,
+                    snake_rect,
+                    width=3,
+                    border_radius=BLOCK_SIZE // 2
+                )
+            else:
+                # Dibujo normal
+                pygame.draw.rect(
+                    self.display,
+                    body_color,
+                    snake_rect,
+                    border_radius=BLOCK_SIZE // 2
+                )
+
+        # Comida: usar imagen PNG de manzana si está disponible
+        if self.food is not None:
+            apple_rect = pygame.Rect(
+                self.margin_side + self.food.x,
+                self.margin_top + self.food.y,
+                BLOCK_SIZE,
+                BLOCK_SIZE
+            )
+
+            if self.apple_image:
+                # Añadir efecto de pulso a la manzana
+                pulse = (np.sin(pygame.time.get_ticks() * 0.01) + 1) * 0.1 + 1.0
+                size = int(BLOCK_SIZE * pulse)
+                pos_x = self.food.x - (size - BLOCK_SIZE) // 2
+                pos_y = self.food.y - (size - BLOCK_SIZE) // 2
+
+                scaled_apple = pygame.transform.scale(self.apple_image, (size, size))
+                self.display.blit(scaled_apple, (self.margin_side + pos_x, self.margin_top + pos_y))
+            else:
+                # Dibujar un círculo rojo con borde
+                pygame.draw.circle(
+                    self.display,
+                    RED,
+                    (self.margin_side + self.food.x + BLOCK_SIZE // 2, self.margin_top + self.food.y + BLOCK_SIZE // 2),
+                    BLOCK_SIZE // 2
+                )
+                pygame.draw.circle(
+                    self.display,
+                    WHITE,
+                    (self.margin_side + self.food.x + BLOCK_SIZE // 2, self.margin_top + self.food.y + BLOCK_SIZE // 2),
+                    BLOCK_SIZE // 2,
+                    2
+                )
+
+    def _render_simple(self):
+        """Renderiza el juego con gráficos simples para mejor rendimiento."""
+        # Dibujar la serpiente (versión simple)
+        for pt in self.snake:
+            snake_rect = pygame.Rect(
+                self.margin_side + pt.x,
+                self.margin_top + pt.y,
+                BLOCK_SIZE,
+                BLOCK_SIZE
+            )
+            pygame.draw.rect(self.display, BLUE1, snake_rect)
+            pygame.draw.rect(self.display, BLUE2, snake_rect, 1)
+
+        # Dibujar la cabeza con un color diferente
+        head_rect = pygame.Rect(
+            self.margin_side + self.head.x,
+            self.margin_top + self.head.y,
+            BLOCK_SIZE,
+            BLOCK_SIZE
+        )
+        pygame.draw.rect(self.display, GREEN, head_rect)
+        pygame.draw.rect(self.display, BLACK, head_rect, 1)
+
+        # Dibujar comida (versión simple)
+        if self.food is not None:
+            food_rect = pygame.Rect(
+                self.margin_side + self.food.x,
+                self.margin_top + self.food.y,
+                BLOCK_SIZE,
+                BLOCK_SIZE
+            )
+            pygame.draw.rect(self.display, RED, food_rect)
+            pygame.draw.rect(self.display, BLACK, food_rect, 1)
+
+    def _render_game_info(self):
+        """Renderiza la información del juego en pantalla en formato de marcador."""
+        # Crear un marcador en la parte superior
+        padding = 10  # Espacio desde el borde
+
+        # Dibujar un fondo para el marcador
+        scoreboard_rect = pygame.Rect(
+            self.margin_side,
+            10,
+            self.grid_width_blocks * BLOCK_SIZE,
+            self.margin_top - 20
+        )
+        pygame.draw.rect(self.display, (40, 40, 60), scoreboard_rect)
+        pygame.draw.rect(self.display, (100, 100, 140), scoreboard_rect, 2)
+
+        # Crear textos con mejor contraste y sombra para legibilidad
+        try:
+            info_font = pygame.font.SysFont("arial", 24, bold=True)
+        except:
+            info_font = self.main_font
+
+        # Crear textos concisos con colores más llamativos
+        score_text = info_font.render(f"SCORE: {self.score}", True, (255, 220, 100))
+        n_game_text = info_font.render(f"GAME: {self.n_game + 1}", True, (180, 220, 255))
+        record_text = info_font.render(f"RECORD: {self.record}", True, (255, 150, 150))
+
+        # Calcular posiciones para alinear horizontalmente los textos en el marcador
+        grid_width_px = self.grid_width_blocks * BLOCK_SIZE
+        scoreboard_center_y = 10 + (self.margin_top - 20) // 2 - info_font.get_height() // 2
+
+        score_pos = [self.margin_side + padding, scoreboard_center_y]
+        game_pos = [self.margin_side + grid_width_px//2 - n_game_text.get_width()//2, scoreboard_center_y]  # Centrado
+        record_pos = [self.margin_side + grid_width_px - record_text.get_width() - padding, scoreboard_center_y]  # Derecha
+
+        # Dibujar sombras para mejor legibilidad
+        shadow_offset = 2
+        shadow_color = (20, 20, 30)
+
+        # Dibujar sombras
+        shadow_text = score_text.copy()
+        self.display.blit(shadow_text, [score_pos[0] + shadow_offset, score_pos[1] + shadow_offset])
+        shadow_text = n_game_text.copy()
+        self.display.blit(shadow_text, [game_pos[0] + shadow_offset, game_pos[1] + shadow_offset])
+        shadow_text = record_text.copy()
+        self.display.blit(shadow_text, [record_pos[0] + shadow_offset, record_pos[1] + shadow_offset])
+
+        # Dibujar textos
+        self.display.blit(score_text, score_pos)
+        self.display.blit(n_game_text, game_pos)
+        self.display.blit(record_text, record_pos)
+
+        # Visualizar colisiones con los bordes si la cabeza está cerca del borde
+        self._visualize_border_collisions()
+
+        # Añadir indicador de modo visual y pathfinding en una línea pequeña en la parte inferior
+        if "agent" in globals() and hasattr(globals()["agent"], "pathfinding_enabled"):
+            # Crear texto de estado en la parte inferior
+            status_font = pygame.font.SysFont("arial", 14) if pygame.font.get_init() else self.small_font
+
+            # Crear texto de estado
+            pathfinding_status = "ON" if globals()["agent"].pathfinding_enabled else "OFF"
+            mode_name = self.visual_config['visual_mode'].capitalize()
+
+            status_text = status_font.render(
+                f"Mode: {mode_name} | Pathfinding: {pathfinding_status} | 'V': Change Mode | 'P': Toggle Pathfinding | 'S': Change Size",
+                True,
+                (200, 200, 200)
+            )
+
+            # Posicionar en la parte inferior usando el tamaño exacto del grid
+            grid_width, grid_height = self.grid_size
+            grid_width_px = grid_width * BLOCK_SIZE
+            grid_height_px = grid_height * BLOCK_SIZE
+
+            status_pos = [self.margin_side + grid_width_px//2 - status_text.get_width()//2,
+                          self.margin_top + grid_height_px - status_text.get_height() - 5]
+
+            # Dibujar con sombra para legibilidad
+            self.display.blit(status_text.copy(), [status_pos[0] + 1, status_pos[1] + 1])
+            self.display.blit(status_text, status_pos)
+
+        # El código para mostrar el estado de pathfinding y modo visual
+        # ahora está integrado en la sección anterior
+
+>>>>>>> origin/main:src/game.py
     def _move(self, action: List[int]) -> None:
         """
         Mueve la serpiente según la acción dada.
