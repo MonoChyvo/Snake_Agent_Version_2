@@ -892,19 +892,7 @@ class SnakeGameAI:
                 BLOCK_SIZE
             )
 
-            # Dibujar sombra si está habilitada
-            if self.visual_config["shadow_effects"]:
-                shadow_offset = 3
-                shadow_color = (50, 50, 50)
-                shadow_rect = snake_rect.copy()
-                shadow_rect.x += shadow_offset
-                shadow_rect.y += shadow_offset
-                pygame.draw.rect(
-                    self.display,
-                    shadow_color,
-                    shadow_rect,
-                    border_radius=BLOCK_SIZE // 2
-                )
+            # Código de sombreado eliminado
 
             # Dibujar el segmento de la serpiente con degradado de color
             color_factor = 1 - (i / len(self.snake))
