@@ -1,19 +1,11 @@
 """
-Implementación del entorno del juego Snake para Aprendizaje Q Profundo.
-Este módulo proporciona la mecánica del juego y visualización para la IA de Snake:
+Implementación de la lógica principal del juego Snake para Aprendizaje Q Profundo.
+Este módulo proporciona la mecánica central del juego:
 
 Componentes principales:
 - SnakeGameAI: Clase principal del juego con integración de aprendizaje por refuerzo
 - Direction: Enumeración para las direcciones de movimiento de la serpiente
-- Sistema avanzado de recompensas que incluye:
-  * Recompensas basadas en distancia
-  * Bonificaciones por supervivencia
-  * Penalizaciones por ineficiencia
-  * Predicción de colisiones futuras
-- Características visuales:
-  * Mapa de calor para posiciones visitadas
-  * Visualización de puntuación y estadísticas
-  * Renderizado de serpiente y comida
+- Point: Clase para representar posiciones en el juego
 - Gestión del estado del juego y detección de colisiones
 """
 
@@ -29,25 +21,24 @@ from utils.config import (
     HEATMAP_OPACITY, STADIUM_MARGIN_TOP, STADIUM_MARGIN_SIDE, STADIUM_MARGIN_BOTTOM
 )
 from utils.advanced_pathfinding import AdvancedPathfinding
+# Importaciones locales para evitar dependencias circulares
+import src.game.renderer as renderer_module
+import src.game.input_handler as input_handler_module
+import src.game.ui as ui_module
+import src.game.effects as effects_module
 
+# Inicializar pygame
 pygame.init()
 
-try:
-    font = pygame.font.Font("assets/arial.ttf", 25)
-except FileNotFoundError:
-    print("No se encontró 'assets/arial.ttf'. Usando fuente predeterminada.")
-    font = pygame.font.SysFont("arial", 25)
-
-
+# Definir la clase Direction como una enumeración
 class Direction(Enum):
     RIGHT = 1
     LEFT = 2
     UP = 3
     DOWN = 4
 
-
+# Definir Point como una namedtuple
 Point = namedtuple("Point", "x, y")
-
 
 class SnakeGameAI:
     def __init__(
@@ -83,25 +74,11 @@ class SnakeGameAI:
             "shadow_effects": SHADOW_EFFECTS
         }
 
-        # Cargar fuentes
-        try:
-            self.main_font = pygame.font.Font("assets/arial.ttf", 25)
-            self.small_font = pygame.font.Font("assets/arial.ttf", 15)
-        except FileNotFoundError:
-            print("No se encontró 'assets/arial.ttf'. Usando fuente predeterminada.")
-            self.main_font = pygame.font.SysFont("arial", 25)
-            self.small_font = pygame.font.SysFont("arial", 15)
-
-        # Cargar imagen de manzana
-        try:
-            self.apple_image = pygame.image.load("assets/apple.png").convert_alpha()
-            self.apple_image = pygame.transform.scale(self.apple_image, (BLOCK_SIZE, BLOCK_SIZE))
-        except Exception as e:
-            print("Error loading apple image from assets/apple.png, using fallback drawing.")
-            self.apple_image = None
-
-        # Crear superficie para el mapa de calor
-        self.heatmap_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        # Inicializar componentes (después de la inicialización completa)
+        self.renderer = None
+        self.input_handler = None
+        self.ui = None
+        self.effects = None
 
         # Inicializar variables de seguimiento
         self.steps = 0
@@ -259,6 +236,9 @@ class SnakeGameAI:
         print(f"Juego inicializado: Serpiente en dirección {self.direction.name}, "
               f"Tamaño del grid: {grid_width}x{grid_height}")
 
+        # Inicializar componentes después de que el juego esté completamente configurado
+        self._init_components()
+
     def _place_food(self):
         """Coloca comida en una posición aleatoria que no esté ocupada por la serpiente,
         con validación mejorada de límites y distribución más uniforme."""
@@ -337,9 +317,6 @@ class SnakeGameAI:
         if self.food is not None:
             self.food_locations.append((self.food.x, self.food.y))
 
-            # Imprimir información de depuración
-            food_grid_x, food_grid_y = self._grid_position(self.food)
-
     def play_step(
         self, action: List[int], n_game: int, record: int
     ) -> Tuple[int, bool, int]:
@@ -357,23 +334,8 @@ class SnakeGameAI:
         self.record = record
         self.frame_iteration += 1
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                quit()
-            elif event.type == pygame.KEYDOWN:
-                # Cambiar modo visual con la tecla 'V'
-                if event.key == pygame.K_v:
-                    self.toggle_visual_mode()
-                # Activar/desactivar pathfinding con la tecla 'P'
-                elif event.key == pygame.K_p and "agent" in globals():
-                    if hasattr(globals()["agent"], "pathfinding_enabled"):
-                        globals()["agent"].set_pathfinding(
-                            not globals()["agent"].pathfinding_enabled
-                        )
-                # Cambiar tamaño de la ventana con la tecla 'S'
-                elif event.key == pygame.K_s:
-                    self.toggle_window_size()
+        # Manejar eventos de entrada
+        self.input_handler.handle_events()
 
         self._move(action)
         self.snake.insert(0, self.head)
@@ -438,7 +400,7 @@ class SnakeGameAI:
         if self.head == self.food:
             self.score += 1
             # Generar partículas de confeti al comer comida
-            self.spawn_confetti(self.food)
+            self.effects.spawn_confetti(self.food)
             # Reward scales with snake length - more reward for growing longer
             base_reward = 1.0
             length_bonus = min(len(self.snake) * 0.5, 10.0)  # Cap at +10 bonus
@@ -500,7 +462,9 @@ class SnakeGameAI:
             self.reward_history.append(reward)
             self.snake.pop()
 
-        self._update_ui()
+        # Actualizar la interfaz de usuario
+        if self.renderer:
+            self.renderer.update_ui()
         self.clock.tick(SPEED)
         return reward, game_over, self.score
 
@@ -539,28 +503,12 @@ class SnakeGameAI:
         self.display = pygame.display.set_mode((self.width, self.height))
 
         # Recrear la superficie del mapa de calor con el nuevo tamaño
-        self.heatmap_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        self.renderer.heatmap_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
 
         print(f"Tamaño de ventana cambiado a: {self.width}x{self.height} (Cuadrícula: {self.grid_width_blocks}x{self.grid_height_blocks})")
 
         # Reiniciar el juego para adaptarse al nuevo tamaño
         self.reset()
-
-    def spawn_confetti(self, position):
-        """Genera partículas de confeti en la posición dada si están habilitadas."""
-        # Solo generar partículas si están habilitadas en la configuración
-        if not self.visual_config["particle_effects"]:
-            return
-
-        num_particles = 20
-        for _ in range(num_particles):
-            particle = {
-                'pos': [self.margin_side + position.x + BLOCK_SIZE // 2, self.margin_top + position.y + BLOCK_SIZE // 2],
-                'vel': [random.uniform(-2, 2), random.uniform(-2, 2)],
-                'color': (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)),
-                'lifetime': random.uniform(20, 40)
-            }
-            self.particles.append(particle)
 
     def _get_next_position(self, point, direction):
         """Helper to get next position in a given direction."""
@@ -638,396 +586,6 @@ class SnakeGameAI:
         # No hay colisión
         return False, None
 
-    def _update_ui(self):
-        """Actualiza la interfaz gráfica según el modo de visualización seleccionado."""
-        # Llenar toda la pantalla con un color de fondo oscuro
-        self.display.fill((20, 20, 30))
-
-        # Dibujar un rectángulo negro para el área de juego (el estadio)
-        game_area = pygame.Rect(
-            self.margin_side,
-            self.margin_top,
-            self.grid_width_blocks * BLOCK_SIZE,
-            self.grid_height_blocks * BLOCK_SIZE
-        )
-        pygame.draw.rect(self.display, BLACK, game_area)
-
-        # Dibujar un borde para el estadio
-        pygame.draw.rect(self.display, (100, 100, 120), game_area, 3)
-
-        # Dibujar cuadrícula si está habilitada
-        if self.visual_config["show_grid"]:
-            self._draw_grid()
-
-        # Dibujar mapa de calor si está habilitado
-        if self.visual_config["show_heatmap"]:
-            self._draw_heatmap()
-
-        # Elegir el método de renderizado según el modo visual
-        if self.visual_config["visual_mode"] == "animated":
-            self._render_animated()
-        else:
-            self._render_simple()
-
-        # Renderizar información de juego (común para ambos modos)
-        self._render_game_info()
-
-        pygame.display.flip()
-
-    def _draw_grid(self):
-        """Dibuja una cuadrícula en el fondo con coordenadas y mejor visibilidad."""
-        # Colores mejorados para mejor contraste
-        grid_color = (60, 60, 80)  # Gris azulado más visible
-        highlight_color = (100, 100, 150)  # Color destacado más brillante
-        border_color = (120, 120, 180)  # Color para el borde exterior
-        text_color = (180, 180, 220)  # Color para las coordenadas
-
-        # Calcular el número exacto de bloques horizontales y verticales
-        grid_width, grid_height = self.grid_size
-
-        # Calcular la posición inicial de la cuadrícula (con márgenes)
-        grid_start_x = self.margin_side
-        grid_start_y = self.margin_top
-        grid_end_x = grid_start_x + grid_width * BLOCK_SIZE
-        grid_end_y = grid_start_y + grid_height * BLOCK_SIZE
-
-        # Dibujar solo las líneas necesarias para el grid exacto
-        for i in range(grid_width + 1):  # +1 para incluir la línea final
-            x = grid_start_x + i * BLOCK_SIZE
-            # Línea normal o destacada según posición
-            line_color = highlight_color if i % 5 == 0 else grid_color
-            line_width = 2 if i % 5 == 0 else 1
-            pygame.draw.line(self.display, line_color, (x, grid_start_y), (x, grid_end_y), line_width)
-
-            # Añadir coordenadas X cada 5 bloques
-            if i % 5 == 0:
-                # Usar una fuente más pequeña para las coordenadas
-                try:
-                    coord_font = pygame.font.SysFont("arial", 10)
-                    coord_text = coord_font.render(str(i), True, text_color)
-                    self.display.blit(coord_text, (x + 2, grid_start_y + 2))
-                except:
-                    pass  # Si hay error con la fuente, omitir coordenadas
-
-        # Líneas horizontales con coordenadas
-        for i in range(grid_height + 1):  # +1 para incluir la línea final
-            y = grid_start_y + i * BLOCK_SIZE
-            # Línea normal o destacada según posición
-            line_color = highlight_color if i % 5 == 0 else grid_color
-            line_width = 2 if i % 5 == 0 else 1
-            pygame.draw.line(self.display, line_color, (grid_start_x, y), (grid_end_x, y), line_width)
-
-            # Añadir coordenadas Y cada 5 bloques
-            if i % 5 == 0:
-                try:
-                    coord_font = pygame.font.SysFont("arial", 10)
-                    coord_text = coord_font.render(str(i), True, text_color)
-                    self.display.blit(coord_text, (grid_start_x + 2, y + 2))
-                except:
-                    pass  # Si hay error con la fuente, omitir coordenadas
-
-        # Dibujar indicadores de cuadrante en las esquinas para mejor orientación
-        try:
-            corner_font = pygame.font.SysFont("arial", 12, bold=True)
-            # Esquina superior izquierda
-            corner_text = corner_font.render("(0,0)", True, (200, 200, 255))
-            self.display.blit(corner_text, (grid_start_x + 5, grid_start_y + 5))
-
-            # Esquina inferior derecha
-            max_x = grid_width - 1
-            max_y = grid_height - 1
-            corner_text = corner_font.render(f"({max_x},{max_y})", True, (200, 200, 255))
-            text_width = corner_text.get_width()
-            self.display.blit(corner_text, (grid_end_x - text_width - 5, grid_end_y - 20))
-        except:
-            pass  # Si hay error con la fuente, omitir coordenadas
-
-    def _draw_heatmap(self):
-        """Dibuja un mapa de calor de las posiciones visitadas."""
-        # Limpiar la superficie del mapa de calor
-        self.heatmap_surface.fill((0, 0, 0, 0))
-
-        # Encontrar el valor máximo en el mapa de visitas para normalizar
-        max_visits = np.max(self.visit_map) if np.any(self.visit_map) else 1
-
-        # Dibujar rectángulos coloreados según la frecuencia de visitas
-        for x in range(self.grid_size[0]):
-            for y in range(self.grid_size[1]):
-                visits = self.visit_map[x, y]
-                if visits > 0:
-                    # Normalizar y calcular color (usar un color más sutil)
-                    intensity = min(visits / max_visits, 1.0)
-
-                    # Usar la opacidad configurada en config.py
-                    alpha = int(HEATMAP_OPACITY * intensity)  # Transparencia configurable
-
-                    # Usar colores diferentes según la intensidad para mejor visualización
-                    if intensity < 0.3:
-                        # Baja intensidad: azul claro
-                        color = (50, 100, 200, alpha)
-                    elif intensity < 0.7:
-                        # Media intensidad: púrpura
-                        color = (100, 50, 200, alpha)
-                    else:
-                        # Alta intensidad: rojo
-                        color = (200, 50, 50, alpha)
-
-                    # Hacer los rectángulos más pequeños para no obstruir la visualización
-                    margin = 5
-                    rect = pygame.Rect(
-                        self.margin_side + x * BLOCK_SIZE + margin,
-                        self.margin_top + y * BLOCK_SIZE + margin,
-                        BLOCK_SIZE - (margin * 2),
-                        BLOCK_SIZE - (margin * 2)
-                    )
-
-                    # Dibujar rectángulos con bordes redondeados para un aspecto más suave
-                    pygame.draw.rect(self.heatmap_surface, color, rect, border_radius=4)
-
-        # Aplicar la superficie del mapa de calor a la pantalla principal
-        self.display.blit(self.heatmap_surface, (0, 0))
-
-    def _render_animated(self):
-        """Renderiza el juego con efectos visuales completos."""
-        # Actualizar y renderizar partículas (efecto confeti) si están habilitadas
-        if self.visual_config["particle_effects"]:
-            for particle in self.particles[:]:
-                # Actualizar posición y disminuir lifetime
-                particle['pos'][0] += particle['vel'][0] * ANIMATION_SPEED
-                particle['pos'][1] += particle['vel'][1] * ANIMATION_SPEED
-                particle['lifetime'] -= 1 * ANIMATION_SPEED
-
-                # Dibujar partícula
-                pygame.draw.circle(
-                    self.display,
-                    particle['color'],
-                    (int(particle['pos'][0]), int(particle['pos'][1])),
-                    2
-                )
-
-                if particle['lifetime'] <= 0:
-                    self.particles.remove(particle)
-
-        # Renderizado mejorado de la serpiente con sombra
-        for i, pt in enumerate(self.snake):
-            # Definir el rectángulo del segmento (ajustado a los márgenes del estadio)
-            snake_rect = pygame.Rect(
-                self.margin_side + pt.x,
-                self.margin_top + pt.y,
-                BLOCK_SIZE,
-                BLOCK_SIZE
-            )
-
-            # Dibujar sombra si está habilitada
-            if self.visual_config["shadow_effects"]:
-                shadow_offset = 3
-                shadow_color = (50, 50, 50)
-                shadow_rect = snake_rect.copy()
-                shadow_rect.x += shadow_offset
-                shadow_rect.y += shadow_offset
-                pygame.draw.rect(
-                    self.display,
-                    shadow_color,
-                    shadow_rect,
-                    border_radius=BLOCK_SIZE // 2
-                )
-
-            # Dibujar el segmento de la serpiente con degradado de color
-            color_factor = 1 - (i / len(self.snake))
-            body_color = (
-                int(30 + 225 * color_factor),
-                int(144 - 39 * color_factor),
-                int(255 - 75 * color_factor),
-            )
-
-            # Verificar si este segmento está involucrado en una colisión
-            is_collision_segment = False
-            if i > 0:  # No verificar la cabeza
-                # Verificar si la cabeza colisiona con este segmento
-                if self.head.x == pt.x and self.head.y == pt.y:
-                    is_collision_segment = True
-
-            # Si es un segmento de colisión, dibujar un borde rojo parpadeante
-            if is_collision_segment:
-                # Efecto parpadeante usando el tiempo
-                flash_intensity = (np.sin(pygame.time.get_ticks() * 0.01) + 1) * 0.5
-                border_color = (255, int(50 * flash_intensity), int(50 * flash_intensity))
-
-                # Dibujar el segmento con un borde destacado
-                pygame.draw.rect(
-                    self.display,
-                    body_color,
-                    snake_rect,
-                    border_radius=BLOCK_SIZE // 2
-                )
-                pygame.draw.rect(
-                    self.display,
-                    border_color,
-                    snake_rect,
-                    width=3,
-                    border_radius=BLOCK_SIZE // 2
-                )
-            else:
-                # Dibujo normal
-                pygame.draw.rect(
-                    self.display,
-                    body_color,
-                    snake_rect,
-                    border_radius=BLOCK_SIZE // 2
-                )
-
-        # Comida: usar imagen PNG de manzana si está disponible
-        if self.food is not None:
-            apple_rect = pygame.Rect(
-                self.margin_side + self.food.x,
-                self.margin_top + self.food.y,
-                BLOCK_SIZE,
-                BLOCK_SIZE
-            )
-
-            if self.apple_image:
-                # Añadir efecto de pulso a la manzana
-                pulse = (np.sin(pygame.time.get_ticks() * 0.01) + 1) * 0.1 + 1.0
-                size = int(BLOCK_SIZE * pulse)
-                pos_x = self.food.x - (size - BLOCK_SIZE) // 2
-                pos_y = self.food.y - (size - BLOCK_SIZE) // 2
-
-                scaled_apple = pygame.transform.scale(self.apple_image, (size, size))
-                self.display.blit(scaled_apple, (self.margin_side + pos_x, self.margin_top + pos_y))
-            else:
-                # Dibujar un círculo rojo con borde
-                pygame.draw.circle(
-                    self.display,
-                    RED,
-                    (self.margin_side + self.food.x + BLOCK_SIZE // 2, self.margin_top + self.food.y + BLOCK_SIZE // 2),
-                    BLOCK_SIZE // 2
-                )
-                pygame.draw.circle(
-                    self.display,
-                    WHITE,
-                    (self.margin_side + self.food.x + BLOCK_SIZE // 2, self.margin_top + self.food.y + BLOCK_SIZE // 2),
-                    BLOCK_SIZE // 2,
-                    2
-                )
-
-    def _render_simple(self):
-        """Renderiza el juego con gráficos simples para mejor rendimiento."""
-        # Dibujar la serpiente (versión simple)
-        for pt in self.snake:
-            snake_rect = pygame.Rect(
-                self.margin_side + pt.x,
-                self.margin_top + pt.y,
-                BLOCK_SIZE,
-                BLOCK_SIZE
-            )
-            pygame.draw.rect(self.display, BLUE1, snake_rect)
-            pygame.draw.rect(self.display, BLUE2, snake_rect, 1)
-
-        # Dibujar la cabeza con un color diferente
-        head_rect = pygame.Rect(
-            self.margin_side + self.head.x,
-            self.margin_top + self.head.y,
-            BLOCK_SIZE,
-            BLOCK_SIZE
-        )
-        pygame.draw.rect(self.display, GREEN, head_rect)
-        pygame.draw.rect(self.display, BLACK, head_rect, 1)
-
-        # Dibujar comida (versión simple)
-        if self.food is not None:
-            food_rect = pygame.Rect(
-                self.margin_side + self.food.x,
-                self.margin_top + self.food.y,
-                BLOCK_SIZE,
-                BLOCK_SIZE
-            )
-            pygame.draw.rect(self.display, RED, food_rect)
-            pygame.draw.rect(self.display, BLACK, food_rect, 1)
-
-    def _render_game_info(self):
-        """Renderiza la información del juego en pantalla en formato de marcador."""
-        # Crear un marcador en la parte superior
-        padding = 10  # Espacio desde el borde
-
-        # Dibujar un fondo para el marcador
-        scoreboard_rect = pygame.Rect(
-            self.margin_side,
-            10,
-            self.grid_width_blocks * BLOCK_SIZE,
-            self.margin_top - 20
-        )
-        pygame.draw.rect(self.display, (40, 40, 60), scoreboard_rect)
-        pygame.draw.rect(self.display, (100, 100, 140), scoreboard_rect, 2)
-
-        # Crear textos con mejor contraste y sombra para legibilidad
-        try:
-            info_font = pygame.font.SysFont("arial", 24, bold=True)
-        except:
-            info_font = self.main_font
-
-        # Crear textos concisos con colores más llamativos
-        score_text = info_font.render(f"SCORE: {self.score}", True, (255, 220, 100))
-        n_game_text = info_font.render(f"GAME: {self.n_game + 1}", True, (180, 220, 255))
-        record_text = info_font.render(f"RECORD: {self.record}", True, (255, 150, 150))
-
-        # Calcular posiciones para alinear horizontalmente los textos en el marcador
-        grid_width_px = self.grid_width_blocks * BLOCK_SIZE
-        scoreboard_center_y = 10 + (self.margin_top - 20) // 2 - info_font.get_height() // 2
-
-        score_pos = [self.margin_side + padding, scoreboard_center_y]
-        game_pos = [self.margin_side + grid_width_px//2 - n_game_text.get_width()//2, scoreboard_center_y]  # Centrado
-        record_pos = [self.margin_side + grid_width_px - record_text.get_width() - padding, scoreboard_center_y]  # Derecha
-
-        # Dibujar sombras para mejor legibilidad
-        shadow_offset = 2
-        shadow_color = (20, 20, 30)
-
-        # Dibujar sombras
-        shadow_text = score_text.copy()
-        self.display.blit(shadow_text, [score_pos[0] + shadow_offset, score_pos[1] + shadow_offset])
-        shadow_text = n_game_text.copy()
-        self.display.blit(shadow_text, [game_pos[0] + shadow_offset, game_pos[1] + shadow_offset])
-        shadow_text = record_text.copy()
-        self.display.blit(shadow_text, [record_pos[0] + shadow_offset, record_pos[1] + shadow_offset])
-
-        # Dibujar textos
-        self.display.blit(score_text, score_pos)
-        self.display.blit(n_game_text, game_pos)
-        self.display.blit(record_text, record_pos)
-
-        # Visualizar colisiones con los bordes si la cabeza está cerca del borde
-        self._visualize_border_collisions()
-
-        # Añadir indicador de modo visual y pathfinding en una línea pequeña en la parte inferior
-        if "agent" in globals() and hasattr(globals()["agent"], "pathfinding_enabled"):
-            # Crear texto de estado en la parte inferior
-            status_font = pygame.font.SysFont("arial", 14) if pygame.font.get_init() else self.small_font
-
-            # Crear texto de estado
-            pathfinding_status = "ON" if globals()["agent"].pathfinding_enabled else "OFF"
-            mode_name = self.visual_config['visual_mode'].capitalize()
-
-            status_text = status_font.render(
-                f"Mode: {mode_name} | Pathfinding: {pathfinding_status} | 'V': Change Mode | 'P': Toggle Pathfinding | 'S': Change Size",
-                True,
-                (200, 200, 200)
-            )
-
-            # Posicionar en la parte inferior usando el tamaño exacto del grid
-            grid_width, grid_height = self.grid_size
-            grid_width_px = grid_width * BLOCK_SIZE
-            grid_height_px = grid_height * BLOCK_SIZE
-
-            status_pos = [self.margin_side + grid_width_px//2 - status_text.get_width()//2,
-                          self.margin_top + grid_height_px - status_text.get_height() - 5]
-
-            # Dibujar con sombra para legibilidad
-            self.display.blit(status_text.copy(), [status_pos[0] + 1, status_pos[1] + 1])
-            self.display.blit(status_text, status_pos)
-
-        # El código para mostrar el estado de pathfinding y modo visual
-        # ahora está integrado en la sección anterior
-
     def _move(self, action: List[int]) -> None:
         """
         Mueve la serpiente según la acción dada.
@@ -1098,64 +656,25 @@ class SnakeGameAI:
                 safe_path.append(pos)
         return safe_path or path
 
-    def _visualize_border_collisions(self):
-        """Visualiza posibles colisiones con los bordes cuando la cabeza está cerca."""
-        # Distancia de advertencia en píxeles
-        warning_distance = BLOCK_SIZE * 2
-
-        # Obtener dimensiones exactas del grid
-        grid_width, grid_height = self.grid_size
-        grid_width_px = grid_width * BLOCK_SIZE
-        grid_height_px = grid_height * BLOCK_SIZE
-
-        # Verificar distancia a cada borde (considerando la posición real en la cuadrícula)
-        near_left = self.head.x < warning_distance
-        near_right = self.head.x > grid_width_px - warning_distance - BLOCK_SIZE
-        near_top = self.head.y < warning_distance
-        near_bottom = self.head.y > grid_height_px - warning_distance - BLOCK_SIZE
-
-        # Si la cabeza está cerca de algún borde, mostrar advertencia visual
-        if near_left or near_right or near_top or near_bottom:
-            # Calcular intensidad del efecto basado en la proximidad
-            # Usar un efecto parpadeante
-            flash_intensity = (np.sin(pygame.time.get_ticks() * 0.01) + 1) * 0.5
-            warning_color = (255, int(100 + 155 * flash_intensity), 0, int(100 + 155 * flash_intensity))
-
-            # Crear una superficie con transparencia para el efecto de advertencia
-            warning_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-
-            # Dibujar rectángulos de advertencia en los bordes cercanos
-            border_width = 5  # Ancho del borde de advertencia
-
-            # Calcular las coordenadas del área de juego con los márgenes
-            game_left = self.margin_side
-            game_top = self.margin_top
-            game_right = game_left + grid_width_px
-            game_bottom = game_top + grid_height_px
-
-            if near_left:
-                pygame.draw.rect(warning_surface, warning_color, (game_left, game_top, border_width, grid_height_px))
-            if near_right:
-                pygame.draw.rect(warning_surface, warning_color, (game_right - border_width, game_top, border_width, grid_height_px))
-            if near_top:
-                pygame.draw.rect(warning_surface, warning_color, (game_left, game_top, grid_width_px, border_width))
-            if near_bottom:
-                pygame.draw.rect(warning_surface, warning_color, (game_left, game_bottom - border_width, grid_width_px, border_width))
-
-            # Aplicar la superficie de advertencia a la pantalla principal
-            self.display.blit(warning_surface, (0, 0))
-
-    def toggle_visual_mode(self):
-        """Cambia entre los modos de visualización animado y simple."""
-        if self.visual_config["visual_mode"] == "animated":
-            self.visual_config["visual_mode"] = "simple"
-        else:
-            self.visual_config["visual_mode"] = "animated"
-
-        # Mostrar mensaje de cambio de modo
-        print(f"Modo visual cambiado a: {self.visual_config['visual_mode']}")
-
     def update_visual_config(self, config):
         """Actualiza la configuración visual con nuevos valores."""
         if config:
             self.visual_config.update(config)
+
+    def _init_components(self):
+        """Inicializa los componentes del juego después de la configuración completa."""
+        # Importar las clases aquí para evitar dependencias circulares
+        from src.game.renderer import Renderer
+        from src.game.input_handler import InputHandler
+        from src.game.ui import UI
+        from src.game.effects import Effects
+
+        # Inicializar componentes si aún no existen
+        if self.renderer is None:
+            self.renderer = Renderer(self)
+        if self.input_handler is None:
+            self.input_handler = InputHandler(self)
+        if self.ui is None:
+            self.ui = UI(self)
+        if self.effects is None:
+            self.effects = Effects(self)

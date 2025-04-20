@@ -20,6 +20,7 @@ import sys
 import gc
 import numpy as np
 import pygame
+import builtins
 from utils.helper import (
     log_game_results,
     save_checkpoint,
@@ -483,6 +484,8 @@ def train(max_games: int) -> None:
     agent = Agent()
     # Hacer que el agente sea accesible globalmente
     globals()["agent"] = agent
+    # También hacerlo accesible a través de builtins para que otros módulos puedan acceder
+    setattr(builtins, 'agent', agent)
 
     # Crear el juego con la configuración visual seleccionada
     game = SnakeGameAI(visual_config=visual_config)  # Set the game reference

@@ -317,12 +317,19 @@ def get_user_config():
     """Función para obtener la configuración del usuario desde la pantalla de inicio.
     Guarda la configuración seleccionada para futuras sesiones.
     """
-    start_screen = StartScreen()
-    config = start_screen.run()
+    print("Cargando configuración visual...")
+    # Cargar configuración guardada o usar valores por defecto
+    config = load_visual_config()
 
-    # Guardar la configuración seleccionada
-    save_visual_config(config)
+    # Para evitar problemas con la pantalla de inicio, usar configuración por defecto
+    # Esto es temporal hasta que se solucione el problema con la pantalla de inicio
+    if not config.get("shadow_effects", True):
+        # Si el usuario ha desactivado los efectos de sombra, respetamos esa configuración
+        print("Usando configuración guardada con efectos de sombra desactivados")
+    else:
+        print("Usando configuración con efectos de sombra activados")
 
+    print("Configuración cargada:", config)
     return config
 
 
