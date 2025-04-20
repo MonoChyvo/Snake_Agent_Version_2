@@ -239,7 +239,7 @@ class StartScreen:
                     "show_grid": self.grid_checkbox.is_checked,
                     "show_heatmap": self.heatmap_checkbox.is_checked,
                     "particle_effects": self.particles_checkbox.is_checked,
-                    "shadow_effects": False  # Sombras siempre desactivadas
+                    "shadow_effects": False  # Opción de sombras eliminada
                 }
 
             # Actualizar checkboxes
