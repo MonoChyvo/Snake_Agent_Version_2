@@ -24,9 +24,28 @@ from enum import Enum
 from collections import namedtuple
 from typing import Optional, Tuple, List, Dict, Any
 from utils.config import (
-    BLOCK_SIZE, SPEED, BLUE1, BLUE2, RED, WHITE, BLACK, GREEN, YELLOW, GRAY, PURPLE,
-    VISUAL_MODE, SHOW_GRID, SHOW_HEATMAP, PARTICLE_EFFECTS, SHADOW_EFFECTS, ANIMATION_SPEED,
-    HEATMAP_OPACITY, STADIUM_MARGIN_TOP, STADIUM_MARGIN_SIDE, STADIUM_MARGIN_BOTTOM
+    MAX_MEMORY,
+    LR,
+    GAMMA,
+    TEMPERATURE,
+    EXPLORATION_PHASE,
+    MIN_TEMPERATURE,
+    DECAY_RATE,
+    EXPLORATION_FREQUENCY,
+    EXPLORATION_TEMP,
+    EXPLORATION_DURATION,
+    MAX_EPOCHS,
+    BLOCK_SIZE,
+    BATCH_SIZE,
+    TAU,
+    MEMORY_PRUNE_FACTOR,
+    MEMORY_MONITOR_FREQ,
+    MEMORY_PRUNE_THRESHOLD,
+    ANIMATION_SPEED,
+    STADIUM_MARGIN_TOP,
+    STADIUM_MARGIN_SIDE,
+    STADIUM_MARGIN_BOTTOM,
+    WHITE, RED, BLUE1, BLUE2, BLACK, GREEN, YELLOW, GRAY, PURPLE
 )
 from utils.advanced_pathfinding import AdvancedPathfinding
 from src.stats_manager import StatsManager
@@ -55,7 +74,6 @@ Point = namedtuple("Point", "x, y")
 class SnakeGameAI:
     def __init__(
         self, width: int = 1300, height: int = 750, n_game: int = 0, record: int = 0,
-        visual_config: Optional[Dict[str, Any]] = None,
         agent=None,
         event_system_instance=None
     ) -> None:
@@ -83,19 +101,10 @@ class SnakeGameAI:
         self.margin_bottom = STADIUM_MARGIN_BOTTOM
 
         # Configuración visual
-        # Si no se proporciona visual_config, usar configuración por defecto
-        if visual_config is None:
-            self.visual_config = {
-                "visual_mode": VISUAL_MODE,
-                "show_grid": SHOW_GRID,
-                "show_heatmap": SHOW_HEATMAP,
-                "particle_effects": PARTICLE_EFFECTS,
-                "shadow_effects": SHADOW_EFFECTS,
-                "show_stats_panel": True,
-                "selected_stats": ["basic", "training", "efficiency", "actions", "model"]
-            }
-        else:
-            self.visual_config = visual_config
+        self.visual_config = {
+            "show_stats_panel": True,
+            "selected_stats": ["basic", "training", "efficiency", "actions", "model"]
+        }
 
         # Cargar fuentes
         try:
@@ -131,6 +140,10 @@ class SnakeGameAI:
         self.game_duration = 0
         self.avg_open_space_ratio = 0
 
+        # --- NUEVO: Para calcular pasos por comida ---
+        self.steps_per_food = []
+        self.steps_since_last_food = 0
+
         # Instancia de StatsManager
         if event_system_instance is None:
             event_system_instance = event_system
@@ -162,7 +175,10 @@ class SnakeGameAI:
         self.particles = []
 
         # Restaurar configuración visual y dimensiones de la ventana
-        self.visual_config = visual_config
+        self.visual_config = {
+            "show_stats_panel": True,
+            "selected_stats": ["basic", "training", "efficiency", "actions", "model"]
+        }
         self.width = width
         self.height = height
 
@@ -360,6 +376,10 @@ class SnakeGameAI:
         # Asegurar que la pantalla mantenga el tamaño correcto
         self.display = pygame.display.set_mode((self.width, self.height))
 
+        # --- NUEVO: Reiniciar pasos por comida ---
+        self.steps_per_food = []
+        self.steps_since_last_food = 0
+
         # Colocar comida inicial
         self._place_food()
 
@@ -431,6 +451,7 @@ class SnakeGameAI:
         self.action_history.append(action_idx)
 
         self.steps += 1
+        self.steps_since_last_food += 1
         self.n_game = n_game
         self.record = record
         self.frame_iteration += 1
@@ -449,17 +470,8 @@ class SnakeGameAI:
                 pygame.quit()
                 quit()
             elif event.type == pygame.KEYDOWN:
-                # Cambiar modo visual con la tecla 'V'
-                if event.key == pygame.K_v:
-                    self.toggle_visual_mode()
-                # Activar/desactivar pathfinding con la tecla 'P'
-                elif event.key == pygame.K_p and "agent" in globals():
-                    if hasattr(globals()["agent"], "pathfinding_enabled"):
-                        globals()["agent"].set_pathfinding(
-                            not globals()["agent"].pathfinding_enabled
-                        )
                 # Cambiar tamaño de la ventana con la tecla 'S'
-                elif event.key == pygame.K_s:
+                if event.key == pygame.K_s:
                     self.toggle_window_size()
                 # Alternar panel de estadísticas con la tecla 'T'
                 elif event.key == pygame.K_t:
@@ -535,6 +547,9 @@ class SnakeGameAI:
             reward = base_reward + length_bonus  # Mantener como float
             self.reward_history.append(reward)
             self._place_food()
+            # --- NUEVO: Registrar pasos por comida ---
+            self.steps_per_food.append(self.steps_since_last_food)
+            self.steps_since_last_food = 0
         else:
             # Mejora la recompensa basada en distancia en el método play_step
             # Distance-based reward component con enfoque progresivo
@@ -624,17 +639,8 @@ class SnakeGameAI:
             pass
 
         self._update_ui()
-        self.clock.tick(SPEED)
+        self.clock.tick(60)
         return reward, game_over, self.score
-
-    def toggle_visual_mode(self):
-        """Cambia entre los modos de visualización 'animated' y 'simple'."""
-        if self.visual_config["visual_mode"] == "animated":
-            self.visual_config["visual_mode"] = "simple"
-            print("Modo visual cambiado a: Simple")
-        else:
-            self.visual_config["visual_mode"] = "animated"
-            print("Modo visual cambiado a: Animado")
 
     def toggle_window_size(self):
         """Cambia entre diferentes tamaños de ventana manteniendo el formato de estadio."""
@@ -672,9 +678,6 @@ class SnakeGameAI:
     def spawn_confetti(self, position):
         """Genera partículas de confeti en la posición dada si están habilitadas."""
         # Solo generar partículas si están habilitadas en la configuración
-        if not self.visual_config["particle_effects"]:
-            return
-
         num_particles = 20
         for _ in range(num_particles):
             particle = {
@@ -783,19 +786,11 @@ class SnakeGameAI:
         # Dibujar un borde para el estadio
         pygame.draw.rect(self.display, (100, 100, 120), game_area, 3)
 
-        # Dibujar cuadrícula si está habilitada
-        if self.visual_config["show_grid"]:
-            self._draw_grid()
-
         # Dibujar mapa de calor si está habilitado
-        if self.visual_config["show_heatmap"]:
-            self._draw_heatmap()
+        self._draw_heatmap()
 
-        # Elegir el método de renderizado según el modo visual
-        if self.visual_config["visual_mode"] == "animated":
-            self._render_animated()
-        else:
-            self._render_simple()
+        # Renderizado animado
+        self._render_animated()
 
         # Renderizar información de juego (común para ambos modos)
         self._render_game_info()
@@ -823,15 +818,15 @@ class SnakeGameAI:
         ANIMATION_DURATION = 0.35
         now = time.time()
 
-        # Colores y estilos
-        bg_color = (24, 26, 38)
-        border_color = (60, 120, 180)
-        title_color = (210, 225, 255)
-        line_color = (60, 80, 110)
-        label_color = (180, 200, 230)
-        value_color = (90, 200, 255)
-        highlight_color = (255, 195, 90)
-        warning_color = (255, 110, 110)
+        # Colores y estilos mejorados para visualización agradable
+        bg_color = (18, 22, 34)          # Fondo: azul muy oscuro
+        border_color = (70, 140, 200)    # Borde: azul medio suave
+        title_color = (180, 220, 255)    # Títulos: celeste claro
+        line_color = (50, 70, 100)       # Líneas divisorias: gris azulado
+        label_color = (200, 210, 230)    # Etiquetas: gris claro
+        value_color = (110, 210, 255)    # Valores: azul/celeste
+        highlight_color = (255, 210, 90) # Récords: dorado suave
+        warning_color = (255, 170, 80)   # Advertencias: naranja suave
         padding = 18
         section_spacing = 16
         value_spacing = 22
@@ -923,74 +918,6 @@ class SnakeGameAI:
                     self.display.blit(val, (panel_x + padding + text.get_width() + 6, y_offset))
                     y_offset += value_spacing
 
-    def _draw_grid(self):
-        """Dibuja una cuadrícula en el fondo con coordenadas y mejor visibilidad."""
-        # Colores mejorados para mejor contraste
-        grid_color = (60, 60, 80)  # Gris azulado más visible
-        highlight_color = (100, 100, 150)  # Color destacado más brillante
-        border_color = (120, 120, 180)  # Color para el borde exterior
-        text_color = (180, 180, 220)  # Color para las coordenadas
-
-        # Calcular el número exacto de bloques horizontales y verticales
-        grid_width, grid_height = self.grid_size
-
-        # Calcular la posición inicial de la cuadrícula (con márgenes)
-        grid_start_x = self.margin_side
-        grid_start_y = self.margin_top
-        grid_end_x = grid_start_x + grid_width * BLOCK_SIZE
-        grid_end_y = grid_start_y + grid_height * BLOCK_SIZE
-
-        # Dibujar solo las líneas necesarias para el grid exacto
-        for i in range(grid_width + 1):  # +1 para incluir la línea final
-            x = grid_start_x + i * BLOCK_SIZE
-            # Línea normal o destacada según posición
-            line_color = highlight_color if i % 5 == 0 else grid_color
-            line_width = 2 if i % 5 == 0 else 1
-            pygame.draw.line(self.display, line_color, (x, grid_start_y), (x, grid_end_y), line_width)
-
-            # Añadir coordenadas X cada 5 bloques
-            if i % 5 == 0:
-                # Usar una fuente más pequeña para las coordenadas
-                try:
-                    coord_font = pygame.font.SysFont("arial", 10)
-                    coord_text = coord_font.render(str(i), True, text_color)
-                    self.display.blit(coord_text, (x + 2, grid_start_y + 2))
-                except:
-                    pass  # Si hay error con la fuente, omitir coordenadas
-
-        # Líneas horizontales con coordenadas
-        for i in range(grid_height + 1):  # +1 para incluir la línea final
-            y = grid_start_y + i * BLOCK_SIZE
-            # Línea normal o destacada según posición
-            line_color = highlight_color if i % 5 == 0 else grid_color
-            line_width = 2 if i % 5 == 0 else 1
-            pygame.draw.line(self.display, line_color, (grid_start_x, y), (grid_end_x, y), line_width)
-
-            # Añadir coordenadas Y cada 5 bloques
-            if i % 5 == 0:
-                try:
-                    coord_font = pygame.font.SysFont("arial", 10)
-                    coord_text = coord_font.render(str(i), True, text_color)
-                    self.display.blit(coord_text, (grid_start_x + 2, y + 2))
-                except:
-                    pass  # Si hay error con la fuente, omitir coordenadas
-
-        # Dibujar indicadores de cuadrante en las esquinas para mejor orientación
-        try:
-            corner_font = pygame.font.SysFont("arial", 12, bold=True)
-            # Esquina superior izquierda
-            corner_text = corner_font.render("(0,0)", True, (200, 200, 255))
-            self.display.blit(corner_text, (grid_start_x + 5, grid_start_y + 5))
-
-            # Esquina inferior derecha
-            max_x = grid_width - 1
-            max_y = grid_height - 1
-            corner_text = corner_font.render(f"({max_x},{max_y})", True, (200, 200, 255))
-            text_width = corner_text.get_width()
-            self.display.blit(corner_text, (grid_end_x - text_width - 5, grid_end_y - 20))
-        except:
-            pass  # Si hay error con la fuente, omitir coordenadas
-
     def _draw_heatmap(self):
         """Dibuja un mapa de calor de las posiciones visitadas."""
         # Limpiar la superficie del mapa de calor
@@ -1008,7 +935,7 @@ class SnakeGameAI:
                     intensity = min(visits / max_visits, 1.0)
 
                     # Usar la opacidad configurada en config.py
-                    alpha = int(HEATMAP_OPACITY * intensity)  # Transparencia configurable
+                    alpha = int(255 * intensity)  # Transparencia configurable
 
                     # Usar colores diferentes según la intensidad para mejor visualización
                     if intensity < 0.3:
@@ -1039,23 +966,22 @@ class SnakeGameAI:
     def _render_animated(self):
         """Renderiza el juego con efectos visuales completos."""
         # Actualizar y renderizar partículas (efecto confeti) si están habilitadas
-        if self.visual_config["particle_effects"]:
-            for particle in self.particles[:]:
-                # Actualizar posición y disminuir lifetime
-                particle['pos'][0] += particle['vel'][0] * ANIMATION_SPEED
-                particle['pos'][1] += particle['vel'][1] * ANIMATION_SPEED
-                particle['lifetime'] -= 1 * ANIMATION_SPEED
+        for particle in self.particles[:]:
+            # Actualizar posición y disminuir lifetime
+            particle['pos'][0] += particle['vel'][0] * ANIMATION_SPEED
+            particle['pos'][1] += particle['vel'][1] * ANIMATION_SPEED
+            particle['lifetime'] -= 1 * ANIMATION_SPEED
 
-                # Dibujar partícula
-                pygame.draw.circle(
-                    self.display,
-                    particle['color'],
-                    (int(particle['pos'][0]), int(particle['pos'][1])),
-                    2
-                )
+            # Dibujar partícula
+            pygame.draw.circle(
+                self.display,
+                particle['color'],
+                (int(particle['pos'][0]), int(particle['pos'][1])),
+                2
+            )
 
-                if particle['lifetime'] <= 0:
-                    self.particles.remove(particle)
+            if particle['lifetime'] <= 0:
+                self.particles.remove(particle)
 
         # Renderizado mejorado de la serpiente con sombra
         for i, pt in enumerate(self.snake):
@@ -1068,18 +994,17 @@ class SnakeGameAI:
             )
 
             # Dibujar sombra si está habilitada
-            if self.visual_config["shadow_effects"]:
-                shadow_offset = 3
-                shadow_color = (50, 50, 50)
-                shadow_rect = snake_rect.copy()
-                shadow_rect.x += shadow_offset
-                shadow_rect.y += shadow_offset
-                pygame.draw.rect(
-                    self.display,
-                    shadow_color,
-                    shadow_rect,
-                    border_radius=BLOCK_SIZE // 2
-                )
+            shadow_offset = 3
+            shadow_color = (50, 50, 50)
+            shadow_rect = snake_rect.copy()
+            shadow_rect.x += shadow_offset
+            shadow_rect.y += shadow_offset
+            pygame.draw.rect(
+                self.display,
+                shadow_color,
+                shadow_rect,
+                border_radius=BLOCK_SIZE // 2
+            )
 
             # Dibujar el segmento de la serpiente con degradado de color
             color_factor = 1 - (i / len(self.snake))
@@ -1159,40 +1084,6 @@ class SnakeGameAI:
                     2
                 )
 
-    def _render_simple(self):
-        """Renderiza el juego con gráficos simples para mejor rendimiento."""
-        # Dibujar la serpiente (versión simple)
-        for pt in self.snake:
-            snake_rect = pygame.Rect(
-                self.margin_side + pt.x,
-                self.margin_top + pt.y,
-                BLOCK_SIZE,
-                BLOCK_SIZE
-            )
-            pygame.draw.rect(self.display, BLUE1, snake_rect)
-            pygame.draw.rect(self.display, BLUE2, snake_rect, 1)
-
-        # Dibujar la cabeza con un color diferente
-        head_rect = pygame.Rect(
-            self.margin_side + self.head.x,
-            self.margin_top + self.head.y,
-            BLOCK_SIZE,
-            BLOCK_SIZE
-        )
-        pygame.draw.rect(self.display, GREEN, head_rect)
-        pygame.draw.rect(self.display, BLACK, head_rect, 1)
-
-        # Dibujar comida (versión simple)
-        if self.food is not None:
-            food_rect = pygame.Rect(
-                self.margin_side + self.food.x,
-                self.margin_top + self.food.y,
-                BLOCK_SIZE,
-                BLOCK_SIZE
-            )
-            pygame.draw.rect(self.display, RED, food_rect)
-            pygame.draw.rect(self.display, BLACK, food_rect, 1)
-
     def _render_game_info(self):
         """Renderiza la información del juego en pantalla en formato de marcador."""
         # Crear un marcador en la parte superior
@@ -1254,7 +1145,7 @@ class SnakeGameAI:
 
             # Crear texto de estado
             pathfinding_status = "ON" if globals()["agent"].pathfinding_enabled else "OFF"
-            mode_name = self.visual_config['visual_mode'].capitalize()
+            mode_name = "Animado"
 
             status_text = status_font.render(
                 f"Mode: {mode_name} | Pathfinding: {pathfinding_status} | 'V': Change Mode | 'P': Toggle Pathfinding | 'S': Change Size",
@@ -1273,9 +1164,6 @@ class SnakeGameAI:
             # Dibujar con sombra para legibilidad
             self.display.blit(status_text.copy(), [status_pos[0] + 1, status_pos[1] + 1])
             self.display.blit(status_text, status_pos)
-
-        # El código para mostrar el estado de pathfinding y modo visual
-        # ahora está integrado en la sección anterior
 
     def _get_category_title(self, category):
         """Devuelve el título formateado para una categoría de estadísticas."""

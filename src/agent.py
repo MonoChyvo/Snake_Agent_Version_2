@@ -47,17 +47,12 @@ from utils.config import (
     MEMORY_PRUNE_FACTOR,
     MEMORY_MONITOR_FREQ,
     MEMORY_PRUNE_THRESHOLD,
-    VISUAL_MODE,
-    SHOW_GRID,
-    SHOW_HEATMAP,
-    PARTICLE_EFFECTS,
-    SHADOW_EFFECTS
 )
 from src.model import DQN, QTrainer
 from colorama import Fore, Style
 from src.game import SnakeGameAI, Direction, Point
 from utils.advanced_pathfinding import AdvancedPathfinding
-from src.start_screen import get_user_config
+# from src.start_screen import get_user_config  # Eliminado para simplificación animada
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -596,7 +591,7 @@ def train(max_games: int) -> None:
         pygame.init()
 
     # Mostrar pantalla de inicio para seleccionar configuración visual
-    visual_config = get_user_config()
+    # visual_config = get_user_config()  # Eliminado para simplificación animada
 
     # Imprimir información de inicio del entrenamiento
     Logger.print_training_start()
@@ -606,7 +601,7 @@ def train(max_games: int) -> None:
     globals()["agent"] = agent
 
     # Crear el juego con la configuración visual seleccionada y pasar el agente correctamente
-    game = SnakeGameAI(visual_config=visual_config, agent=agent)
+    game = SnakeGameAI(agent=agent)  # Solo argumento necesario para versión animada
     agent.game = game  # Sincronizar referencia inversa si es necesario
     pathfinder = AdvancedPathfinding(game)
 

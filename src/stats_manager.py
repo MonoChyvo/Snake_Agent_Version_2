@@ -55,9 +55,9 @@ class StatsManager:
             # Usar SIEMPRE los valores del agente si existen para que los tests sean estrictos
             efficiency_ratio = getattr(agent, 'efficiency_ratio', 0.0) if agent else 0.0
             # Priorizar steps_per_food del agente si existe, si no calcular
-            steps_per_food = getattr(agent, 'steps_per_food', None)
-            if steps_per_food is None:
-                steps_per_food = steps / score if score > 0 else 0.0
+            steps_per_food = 0.0
+            if hasattr(self.game, 'steps_per_food') and self.game.steps_per_food:
+                steps_per_food = sum(self.game.steps_per_food) / len(self.game.steps_per_food)
             # --- Construir estructura jerárquica esperada por el panel ---
             new_data = {
                 'basic': {

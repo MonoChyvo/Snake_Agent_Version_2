@@ -1,20 +1,13 @@
 # Snake DQN - Juego de Snake con Aprendizaje por Refuerzo Profundo
 
-<p align="center">
-  <img src="assets/snake_dqn_logo.png" alt="Snake DQN Logo" width="200" height="200" />
-</p>
-
-Este proyecto implementa el clásico juego de Snake utilizando Deep Q-Learning (DQN) para entrenar un agente que aprenda a jugar de forma autónoma. El sistema utiliza técnicas avanzadas de aprendizaje por refuerzo para desarrollar estrategias óptimas de juego.
+Este proyecto implementa el clásico juego de Snake utilizando Deep Q-Learning (DQN) para entrenar un agente que aprende a jugar de forma autónoma. El sistema ahora solo incluye la versión animada, eliminando modos visuales alternativos, pantalla de inicio y configuraciones visuales avanzadas.
 
 ## 💫 Características Principales
 
-- **Implementación Completa del Juego**: Desarrollado con PyGame, con múltiples modos de visualización.
-- **Algoritmo DQN Avanzado**: Incluye mejoras como Double DQN, Prioritized Experience Replay y estrategias de exploración adaptativas.
-- **Visualización en Tiempo Real**: Observa cómo el agente aprende y mejora con el tiempo.
-- **Interfaz Gráfica Mejorada**: Diseño de "estadio" con efectos visuales personalizables.
-- **Sistema de Pathfinding**: Algoritmos A\* y búsqueda de caminos largos para evitar situaciones de bloqueo.
+- **Versión Animada Única**: El juego siempre inicia en modo animado, sin selección de modos ni configuraciones visuales adicionales.
+- **Interfaz Gráfica Limpia**: Diseño simplificado, solo con los elementos necesarios para el entrenamiento y visualización animada.
+- **Sistema de Pathfinding**: Algoritmos A* y búsqueda de caminos largos para evitar bloqueos.
 - **Análisis Detallado**: Seguimiento y visualización de métricas de entrenamiento.
-- **Configuración Persistente**: Guarda tus preferencias visuales entre sesiones.
 
 ## 💻 Requisitos Técnicos
 
@@ -78,14 +71,8 @@ Para comenzar el entrenamiento del agente:
 python main.py
 ```
 
-Al iniciar, se mostrará una pantalla de configuración donde puedes seleccionar las opciones visuales:
-
-- **Modo Animado**: Visualización completa con efectos gráficos.
-- **Modo Simple**: Renderizado básico para mayor rendimiento.
-
 ### Controles Durante el Entrenamiento
 
-- **V**: Alterna entre modo visual animado y simple.
 - **P**: Activa/desactiva el sistema de pathfinding.
 - **S**: Cambia el tamaño de la ventana (pequeño, mediano, grande).
 
@@ -111,20 +98,18 @@ Los resultados se guardan en las carpetas `plots/` y `results/`.
 
 ```
 snake_dqn/
-├── assets/            # Recursos gráficos y fuentes
-├── docs/              # Documentación adicional
-├── model_Model/       # Modelos guardados
-├── plots/             # Gráficos generados
-├── results/           # Resultados y análisis
+├── assets/            # Recursos visuales
+│   ├── apple.png      # Imagen de la manzana
+│   ├── arial.ttf      # Fuente usada en la interfaz
 ├── src/               # Código fuente principal
 │   ├── agent.py       # Agente de aprendizaje
-│   ├── game.py        # Implementación del juego
+│   ├── game.py        # Implementación del juego (solo animado)
 │   ├── model.py       # Arquitectura de la red neuronal
-│   └── start_screen.py # Pantalla de inicio
+│   ├── shared_data.py # Parámetros compartidos
+│   ├── stats_manager.py # Gestión centralizada de estadísticas
 ├── utils/             # Utilidades y herramientas
+│   ├── config.py      # Configuración general (solo animación)
 │   ├── advanced_pathfinding.py  # Algoritmos de búsqueda
-│   ├── config.py                # Configuración y parámetros
-│   ├── config_manager.py        # Gestión de configuración
 │   ├── efficient_memory.py      # Gestión optimizada de memoria
 │   ├── evaluation.py            # Herramientas de evaluación
 │   └── helper.py                # Funciones auxiliares
@@ -137,16 +122,11 @@ snake_dqn/
 
 ## ⚙️ Configuración
 
-### Configuración Visual
-
-La configuración visual se puede ajustar a través de la pantalla de inicio y se guarda en `config.json` para futuras sesiones.
-
 ### Parámetros del Sistema
 
 Puedes modificar los parámetros del juego y del entrenamiento en `utils/config.py`:
 
 - **Parámetros de Juego**: Tamaño de bloque, velocidad, dimensiones.
-- **Parámetros Visuales**: Efectos, colores, animaciones.
 - **Hiperparámetros de DQN**: Tasa de aprendizaje, factor de descuento, tamaño de lote.
 - **Parámetros de Exploración**: Temperatura, decaimiento, fases de exploración.
 - **Gestión de Memoria**: Tamaño del búfer, umbrales de poda.

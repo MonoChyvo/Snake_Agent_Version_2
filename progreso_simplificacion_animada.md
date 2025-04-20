@@ -7,12 +7,12 @@ Dejar únicamente la versión animada del juego Snake DQN, eliminando toda refer
 
 ## Checklist de Avances
 
-- [ ] 1. Eliminar pantalla de configuración (`start_screen.py`) y referencias
-- [ ] 2. Limpiar configuración y dependencias visuales
-- [ ] 3. Simplificar flujo de arranque (inicio directo en modo animado)
+- [x] 1. Eliminar pantalla de configuración (`start_screen.py`) y referencias
+- [x] 2. Limpiar configuración y dependencias visuales
+- [x] 3. Simplificar flujo de arranque (inicio directo en modo animado)
 - [ ] 4. Limpiar renderizado en `game.py` (solo `_render_animated`)
-- [ ] 5. Limpiar interfaz y assets innecesarios
-- [ ] 6. Actualizar documentación (README)
+- [x] 5. Limpiar interfaz y assets innecesarios
+- [x] 6. Actualizar documentación (README)
 - [ ] 7. Pruebas de funcionamiento y limpieza final
 
 ---
