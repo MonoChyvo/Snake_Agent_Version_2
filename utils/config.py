@@ -35,8 +35,9 @@ STADIUM_MARGIN_BOTTOM = 30  # Margen inferior
 # Configuración de visualización
 # Solo se conserva lo relevante para la versión animada
 ANIMATION_SPEED = 1.0  # Velocidad de animación (1.0 = normal)
+HEATMAP_OPACITY = 0.5  # Opacidad por defecto para el heatmap (ajustable)
 
-# Eliminados: VISUAL_MODE, SHOW_GRID, SHOW_HEATMAP, PARTICLE_EFFECTS, SHADOW_EFFECTS, HEATMAP_OPACITY
+# Eliminados: VISUAL_MODE, SHOW_GRID, SHOW_HEATMAP, PARTICLE_EFFECTS, SHADOW_EFFECTS
 
 # Parámetros de gestión de memoria
 MAX_MEMORY = 300_000
