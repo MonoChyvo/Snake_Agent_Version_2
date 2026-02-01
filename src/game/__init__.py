@@ -11,10 +11,6 @@ Módulos:
 """
 
 from src.game.core import SnakeGameAI, Direction, Point
-from src.game.renderer import Renderer
-from src.game.input_handler import InputHandler
-from src.game.ui import UI
-from src.game.effects import Effects
 
 # Exportar clases y funciones para mantener la API pública
-__all__ = ['SnakeGameAI', 'Direction', 'Point', 'Renderer', 'InputHandler', 'UI', 'Effects']
+__all__ = ['SnakeGameAI', 'Direction', 'Point']

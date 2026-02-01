@@ -1,0 +1,66 @@
+VER TODES LOS CHAT en chatGpt para ordenar y BORRAR lo que ya no sea necesario.
+
+
+------------------------------------------------------------------------------------------
+Para el análisis estático del código: "Por favor, realiza un análisis estático completo del código en todo el proyecto. Busca imports no utilizados, variables y funciones definidas pero no usadas, y código redundante o duplicado."
+
+Para análisis de dependencias: "Analiza las dependencias entre archivos en el proyecto, identifica dependencias circulares y verifica la consistencia en las importaciones entre archivos."
+
+Para revisión de la estructura de datos: "Revisa la estructura de datos del proyecto, identificando posibles duplicaciones en el almacenamiento de datos y verifica si todos los atributos/campos son necesarios."
+
+Para el análisis de flujo de ejecución: "Analiza el flujo de ejecución del código, identificando bloques repetidos, condiciones redundantes y oportunidades de optimización en la lógica."
+
+Para optimización de memoria y rendimiento: "Identifica operaciones costosas, estructuras de datos ineficientes y problemas de gestión de recursos que podrían optimizarse."
+
+Para revisar configuración y constantes: "Analiza los valores hardcodeados y las constantes en todo el proyecto para identificar redundancias o valores que deberían ser configurables."
+
+Para análisis de logging y debugging: "Revisa el código de logging y debugging para eliminar elementos innecesarios y optimizar la generación de registros."
+
+Para revisión de la documentación: "Analiza la documentación del código y verifica su consistencia con la implementación actual."
+-------------------------------------------------------------------------------------------------------------------------------------------
+
+Al iniciar entrenamiento se tiene temp de 0.99:
+- Decaimiento en 0.9993.
+
+- Cada 80 epochs activar una sesion de "explotacion":
+      - si la temp es mayor que .45:
+		6 epochs en temp 0.05.
+
+- Si la temp es menor que .45:
+	- cada 100 epochs activar la sesion de exploracion
+	- 10 epochs en temp 0.75
+
+- Al tener mas de 2 sesiones (500 epochs) que ya no se rompa el record (incluso antes si se llega a detectar:
+	- comenzar la sesion con TEMP=0.209, y cada 50 epochs generar 8 sesiones de 	   	  exploracion con TEMP=0.850
+
+-------------------------------------------------------------------------------------------
+- Se puede crear un sistema que lleve el registro de:
+	1. que tan largo es el cuerpo de la serpiente
+	2. la ubicacion de los ultimos 3 cuadro del cuerpo de la serpiente
+	3. la ubicacion del punto medio del cuerpo de la serpiente.
+  para poder mejorar la percepcion del agente conforme la serpiente va creciendo y asi evitar que colisione consigo misma o algo similar?
+-------------------------------------------------------------
+Ejemplo de cálculo:
+
+Supongamos que:
+
+El estado es un vector de 11 características (como en tu código).
+Cada característica es un entero de 4 bytes (32 bits).
+La acción es un entero de 4 bytes.
+La recompensa es un flotante de 4 bytes.
+El siguiente estado es otro vector de 11 características.
+done es un booleano de 1 byte.
+Entonces, el tamaño de una experiencia sería aproximadamente:
+
+Estado: 11 * 4 bytes = 44 bytes
+Acción: 4 bytes
+Recompensa: 4 bytes
+Siguiente estado: 44 bytes
+done: 1 byte
+Total por experiencia: 44 + 4 + 4 + 44 + 1 = 97 bytes
+
+Para MAX_MEMORY = 10_000 experiencias:
+
+10,000 * 97 bytes = 970,000 bytes ≈ 947 KB
+Por lo tanto, un buffer de 10,000 experiencias ocuparía aproximadamente 947 KB de memoria.
+------------------------------------------------------------------

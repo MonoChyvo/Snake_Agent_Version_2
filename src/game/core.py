@@ -139,6 +139,10 @@ class SnakeGameAI:
         self.decision_times = []
         self.game_duration = 0
         self.avg_open_space_ratio = 0
+        
+        # Optimization: Heatmap tracking
+        self.last_max_visits = 0
+        self.heatmap_dirty_cells = set()
 
         # --- NUEVO: Para calcular pasos por comida ---
         self.steps_per_food = []
@@ -486,6 +490,7 @@ class SnakeGameAI:
         grid_width, grid_height = self.grid_size
         if 0 <= grid_x < grid_width and 0 <= grid_y < grid_height:
             self.visit_map[grid_x, grid_y] += 1
+            self.heatmap_dirty_cells.add((grid_x, grid_y))
 
         efficiency_penalty = 0  # Initialize efficiency_penalty to 0
         # Modificar el cálculo de efficiency_penalty
@@ -919,49 +924,85 @@ class SnakeGameAI:
                     y_offset += value_spacing
 
     def _draw_heatmap(self):
-        """Dibuja un mapa de calor de las posiciones visitadas."""
-        # Limpiar la superficie del mapa de calor
-        self.heatmap_surface.fill((0, 0, 0, 0))
+        """Dibuja un mapa de calor optimizado."""
+        # Si no hay visitas, no hacer nada
+        if not np.any(self.visit_map):
+            return
 
-        # Encontrar el valor máximo en el mapa de visitas para normalizar
-        max_visits = np.max(self.visit_map) if np.any(self.visit_map) else 1
-
-        # Dibujar rectángulos coloreados según la frecuencia de visitas
-        for x in range(self.grid_size[0]):
-            for y in range(self.grid_size[1]):
-                visits = self.visit_map[x, y]
-                if visits > 0:
-                    # Normalizar y calcular color (usar un color más sutil)
-                    intensity = min(visits / max_visits, 1.0)
-
-                    # Usar la opacidad configurada en config.py
-                    alpha = int(255 * intensity)  # Transparencia configurable
-
-                    # Usar colores diferentes según la intensidad para mejor visualización
-                    if intensity < 0.3:
-                        # Baja intensidad: azul claro
-                        color = (50, 100, 200, alpha)
-                    elif intensity < 0.7:
-                        # Media intensidad: púrpura
-                        color = (100, 50, 200, alpha)
-                    else:
-                        # Alta intensidad: rojo
-                        color = (200, 50, 50, alpha)
-
-                    # Hacer los rectángulos más pequeños para no obstruir la visualización
-                    margin = 5
-                    rect = pygame.Rect(
-                        self.margin_side + x * BLOCK_SIZE + margin,
-                        self.margin_top + y * BLOCK_SIZE + margin,
-                        BLOCK_SIZE - (margin * 2),
-                        BLOCK_SIZE - (margin * 2)
-                    )
-
-                    # Dibujar rectángulos con bordes redondeados para un aspecto más suave
-                    pygame.draw.rect(self.heatmap_surface, color, rect, border_radius=4)
+        max_visits = np.max(self.visit_map)
+        
+        # Si el máximo cambió, forzar redibujado completo porque la normalización cambia para todos
+        force_redraw = (max_visits != self.last_max_visits)
+        self.last_max_visits = max_visits
+        
+        if force_redraw:
+            # Limpiar superficie completa
+            self.heatmap_surface.fill((0, 0, 0, 0))
+            # Redibujar todas las celdas con visitas
+            self._redraw_full_heatmap(max_visits)
+            self.heatmap_dirty_cells.clear()
+        else:
+            # Dibujo incremental solo para celdas modificadas
+            if self.heatmap_dirty_cells:
+                self._draw_dirty_cells(max_visits)
+                self.heatmap_dirty_cells.clear()
 
         # Aplicar la superficie del mapa de calor a la pantalla principal
         self.display.blit(self.heatmap_surface, (0, 0))
+
+    def _get_heatmap_color(self, visits, max_visits):
+        """Calcula el color para una celda del mapa de calor."""
+        intensity = min(visits / max_visits, 1.0)
+        # Usar la opacidad configurada (hardcoded temporalmente si no está en self)
+        # TODO: Mover HEATMAP_OPACITY a self.visual_config o similar si se desea configurar
+        base_alpha = 128 
+        alpha = int(base_alpha * intensity)
+
+        if intensity < 0.3:
+            return (50, 100, 200, alpha)
+        elif intensity < 0.7:
+            return (100, 50, 200, alpha)
+        else:
+            return (200, 50, 50, alpha)
+
+    def _draw_cell_on_heatmap(self, x, y, color):
+        """Dibuja una celda individual en la superficie del heatmap."""
+        margin = 5
+        rect = pygame.Rect(
+            self.margin_side + x * BLOCK_SIZE + margin,
+            self.margin_top + y * BLOCK_SIZE + margin,
+            BLOCK_SIZE - (margin * 2),
+            BLOCK_SIZE - (margin * 2)
+        )
+        # Limpiar el área de la celda antes de dibujar (para manejar transparencia correctamente)
+        # pygame.draw.rect(self.heatmap_surface, (0,0,0,0), rect) # Esto no borra alpha en surface normal
+        # Para borrar en surface con alpha, necesitaríamos fill con blending especial, 
+        # pero dibujar encima suele ser aceptable para heatmaps acumulativos.
+        # Si queremos perfección, podríamos recortar, pero es costoso. 
+        # Simplemente dibujamos encima.
+        pygame.draw.rect(self.heatmap_surface, color, rect, border_radius=4)
+
+    def _redraw_full_heatmap(self, max_visits):
+        """Redibuja todo el mapa de calor (lento, usar solo cuando cambia normalización)."""
+        grid_width, grid_height = self.grid_size
+        # Iterar solo sobre celdas con visitas (optimización numpy)
+        # Obtener índices de celdas con visitas > 0
+        visited_indices = np.argwhere(self.visit_map > 0)
+        
+        for x, y in visited_indices:
+            visits = self.visit_map[x, y]
+            color = self._get_heatmap_color(visits, max_visits)
+            self._draw_cell_on_heatmap(x, y, color)
+
+    def _draw_dirty_cells(self, max_visits):
+        """Dibuja solo las celdas que han cambiado."""
+        for x, y in self.heatmap_dirty_cells:
+            # Verificar límites por seguridad
+            if 0 <= x < self.grid_size[0] and 0 <= y < self.grid_size[1]:
+                visits = self.visit_map[x, y]
+                if visits > 0:
+                    color = self._get_heatmap_color(visits, max_visits)
+                    self._draw_cell_on_heatmap(x, y, color)
 
     def _render_animated(self):
         """Renderiza el juego con efectos visuales completos."""
